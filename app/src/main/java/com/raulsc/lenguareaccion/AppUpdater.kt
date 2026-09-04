@@ -156,10 +156,12 @@ class AppUpdater(private val context: Context) {
         repeat(6) {
             val connection = URL(current).openConnection() as HttpURLConnection
             connection.instanceFollowRedirects = false
+            connection.useCaches = false
             connection.connectTimeout = 15_000
             connection.readTimeout = 60_000
             connection.setRequestProperty("User-Agent", USER_AGENT)
             connection.setRequestProperty("Accept", "application/octet-stream, application/json")
+            connection.setRequestProperty("Cache-Control", "no-cache")
             val status = connection.responseCode
             if (status in 300..399) {
                 current = connection.getHeaderField("Location") ?: error("Redirección sin destino")
