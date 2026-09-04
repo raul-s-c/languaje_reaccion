@@ -8,7 +8,7 @@ Aplicación Android personal para estudiar japonés con vídeos propios. Reprodu
 
 La primera instalación necesita permitir APK de esta procedencia. Después puede usarse **Buscar actualización** dentro de la app. Cada descarga se valida con SHA-256 y Android exige una confirmación visible antes de instalarla.
 
-## Funciones de la versión 0.2.0
+## Funciones de la versión 0.2.1
 
 - Reproductor Media3 para vídeos locales y enlaces HTTP/HTTPS directos, incluidos enlaces de reproducción de Plex.
 - Extracción y conversión del audio a PCM mono de 16 kHz dentro de Android.
