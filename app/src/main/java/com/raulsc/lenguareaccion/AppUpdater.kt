@@ -46,7 +46,8 @@ class AppUpdater(private val context: Context) {
         callback(UpdateState.Checking)
         executor.execute {
             try {
-                val info = parseManifest(readText(MANIFEST_URL))
+                // A unique query avoids GitHub Raw/CDN returning a cached previous manifest.
+                val info = parseManifest(readText("$MANIFEST_URL?ts=${System.currentTimeMillis()}"))
                 val available = info.versionCode > BuildConfig.VERSION_CODE ||
                     isNewerVersion(info.versionName, BuildConfig.VERSION_NAME)
                 post(callback, if (available) UpdateState.Available(info) else UpdateState.UpToDate)
