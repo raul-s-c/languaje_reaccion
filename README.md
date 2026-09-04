@@ -8,6 +8,8 @@ Aplicación Android personal para estudiar japonés con vídeos propios. Reprodu
 
 La primera instalación necesita permitir APK de esta procedencia. Después puede usarse **Buscar actualización** dentro de la app. Cada descarga se valida con SHA-256 y Android exige una confirmación visible antes de instalarla.
 
+El diseño del procesador por lotes para PC, los paquetes de estudio, OneDrive y el historial personal está documentado en [docs/REQUISITOS_PC_TABLET.md](docs/REQUISITOS_PC_TABLET.md).
+
 ## Funciones de la versión 0.2.2
 
 - Reproductor Media3 para vídeos locales y enlaces HTTP/HTTPS directos, incluidos enlaces de reproducción de Plex.
