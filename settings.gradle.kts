@@ -16,4 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "LenguaReaccion"
 include(":app")
-
+include(":whisperlib")

@@ -1,7 +1,7 @@
 {
-  "versionCode": 2,
-  "versionName": "0.1.1",
+  "versionCode": 3,
+  "versionName": "0.2.0",
   "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk",
-  "sha256": "6421147f1ad3ef90c56b89fa4c0387972e15a06bd4045c1c4fed99ec5ab2c2ca",
-  "notes": "Corrige el cierre al abrir en orientación vertical y añade diagnóstico de fallos."
+  "sha256": "595db2c0b59de8c15b8ea887680619c96a97831f3cc81f613dd18ff7dca68bee",
+  "notes": "Whisper local, modelos Tiny/Base/Small/Turbo, subtítulos sincronizados, lecturas IPADIC, GPT-5.4 Mini, Plex/URL y exportación SRT/VTT."
 }

@@ -1,47 +1,61 @@
 # Lengua Reacción
 
-Aplicación Android personal para aprender japonés a partir de vídeos propios: reproducción local o desde Plex, subtítulos japoneses generados, traducción al español, furigana, diccionario y repaso.
+Aplicación Android personal para estudiar japonés con vídeos propios. Reproduce el vídeo, extrae su audio en la tablet, genera subtítulos japoneses con Whisper local y, de forma opcional, usa GPT-5.4 Mini para corregir el reconocimiento, traducirlo al español y producir su lectura.
 
-## Instalar en la tablet
+## Instalar
 
 ### [⬇ Descargar la APK más reciente](https://github.com/raul-s-c/languaje_reaccion/raw/refs/heads/main/apk/lengua-reaccion.apk)
 
-En la primera instalación, Android solicitará permiso para instalar una aplicación descargada fuera de Google Play. A partir de entonces, usa **Buscar actualización** en la cabecera de la propia aplicación. La app comprobará `updates/latest.json`, descargará la APK, validará su SHA-256, limpiará cachés prescindibles y abrirá el instalador de Android.
+La primera instalación necesita permitir APK de esta procedencia. Después puede usarse **Buscar actualización** dentro de la app. Cada descarga se valida con SHA-256 y Android exige una confirmación visible antes de instalarla.
 
-> Android siempre exige una confirmación visible para actualizar una APK fuera de Google Play. La aplicación no intenta eludir esa protección.
+## Funciones de la versión 0.2.0
 
-## Estado de la versión 0.1.1
+- Reproductor Media3 para vídeos locales y enlaces HTTP/HTTPS directos, incluidos enlaces de reproducción de Plex.
+- Extracción y conversión del audio a PCM mono de 16 kHz dentro de Android.
+- Whisper.cpp nativo ARM64 con cuatro modelos descargables: Tiny, Base, Small y Large v3 Turbo cuantizados.
+- Base como opción recomendada para la Xiaomi Pad 7 Pro y Tiny para pruebas rápidas.
+- Descargas de modelos verificadas con SHA-256 y reanudables tras una interrupción.
+- Procesamiento en primer plano y bloqueo parcial de suspensión para HyperOS.
+- Detección de silencio previa a Whisper para ahorrar tiempo y reducir alucinaciones.
+- Subtítulo sincronizado con el reproductor.
+- Segmentación, lecturas, forma de diccionario y categoría gramatical sin conexión mediante Kuromoji/IPADIC.
+- Corrección contextual, traducción al español y lectura completa mediante la Responses API y `gpt-5.4-mini`.
+- Clave de OpenAI cifrada con Android Keystore; `store: false`; nunca se incluye en la APK ni en registros.
+- Exportación y uso compartido en SRT o WebVTT.
+- Actualizador interno, validación de integridad y limpieza de cachés prescindibles.
+- Recuperación de cierres inesperados.
 
-- Reproductor de vídeos locales con Media3.
-- Diseño adaptativo para tablet y móvil.
-- Comprobación y descarga de actualizaciones desde este repositorio.
-- Verificación SHA-256 antes de instalar.
-- Limpieza de caché antes de descargar una actualización.
-- Recuperación y diagnóstico de cierres inesperados.
-- Estructura visual inicial japonés → español.
-- Preparada para incorporar Plex y el servicio de transcripción del PC.
+El vídeo y el audio temporal nunca se envían a OpenAI. Solo se envían los segmentos japoneses cuando el usuario pulsa expresamente **Corregir y traducir con GPT-5.4 Mini**. Una URL de Plex, que puede contener un token, se conserva únicamente durante la sesión actual y no se escribe en preferencias.
 
-## Desarrollo local
+## Primeras pruebas
 
-Requisitos:
+Las instrucciones exactas y la información que necesito del usuario están en [docs/PRUEBAS_USUARIO.md](docs/PRUEBAS_USUARIO.md).
 
-- JDK 17 o posterior.
-- Android SDK 36.
-- Gradle 8.14.5 o el wrapper del proyecto.
+## Desarrollo
 
-Compilar y actualizar la APK pública:
+Requisitos: JDK 17, Android SDK 36, NDK 27.0.12077973 y Gradle 8.14.5. Whisper.cpp se incorpora como submódulo:
 
 ```powershell
+git clone --recurse-submodules https://github.com/raul-s-c/languaje_reaccion.git
+cd languaje_reaccion
 .\scripts\package-apk.ps1
 ```
 
-Al crear una versión nueva se deben actualizar también `versionCode` y `versionName` en `app/build.gradle.kts`. La carpeta local `.signing/` contiene la clave que mantiene compatibles todas las actualizaciones y está excluida de Git. Debe conservarse una copia privada; perderla impediría instalar versiones nuevas sobre las anteriores.
+Al crear una versión nueva hay que incrementar `versionCode` y `versionName` en `app/build.gradle.kts`. `scripts/package-apk.ps1` construye `apk/lengua-reaccion.apk` y actualiza `updates/latest.json` con el SHA-256 real. La clave estable de firma vive en `.signing/`, está excluida de Git y debe conservarse de forma privada.
 
-## Próximos hitos
+## Arquitectura
 
-1. Conexión y catálogo de Plex Media Server.
-2. Servicio complementario en el PC y cola de procesamiento.
-3. Transcripción japonesa y editor de sincronización.
-4. Traducción contextual al español.
-5. Furigana, JMdict y análisis morfológico.
-6. Guardado de vocabulario y repetición espaciada.
+- `app/`: interfaz Compose, Media3, audio, persistencia, exportación, OpenAI y actualizador.
+- `whisperlib/`: puente Kotlin/JNI y compilación ARM64.
+- `third_party/whisper.cpp`: submódulo oficial del motor.
+- `updates/latest.json`: manifiesto consultado por el actualizador.
+- `apk/lengua-reaccion.apk`: APK pública y estable.
+
+## Pendiente para alcanzar la experiencia completa
+
+- Navegador de bibliotecas Plex con autenticación cifrada, en vez de pegar un enlace directo.
+- Editor visual de tiempos y texto por segmento.
+- Diccionario JMdict japonés-español completo y guardado de vocabulario.
+- Repetición espaciada, estadísticas y exportación a Anki.
+- Modos de estudio como pausa automática, repetición de frase y ocultación de subtítulos.
+- Pruebas largas de velocidad y calidad en la Xiaomi con audio japonés real.
