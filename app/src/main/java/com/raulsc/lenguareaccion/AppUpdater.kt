@@ -35,7 +35,7 @@ sealed interface UpdateState {
 class AppUpdater(private val context: Context) {
     companion object {
         private const val MANIFEST_URL =
-            "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/updates/latest.json"
+            "https://api.github.com/repos/raul-s-c/languaje_reaccion/contents/updates/latest.json?ref=main"
         private const val USER_AGENT = "LenguaReaccion-Android/${BuildConfig.VERSION_NAME}"
     }
 
@@ -47,7 +47,7 @@ class AppUpdater(private val context: Context) {
         executor.execute {
             try {
                 // A unique query avoids GitHub Raw/CDN returning a cached previous manifest.
-                val info = parseManifest(readText("$MANIFEST_URL?ts=${System.currentTimeMillis()}"))
+                val info = parseManifest(readText("$MANIFEST_URL&ts=${System.currentTimeMillis()}"))
                 val available = info.versionCode > BuildConfig.VERSION_CODE ||
                     isNewerVersion(info.versionName, BuildConfig.VERSION_NAME)
                 post(callback, if (available) UpdateState.Available(info) else UpdateState.UpToDate)
@@ -161,7 +161,10 @@ class AppUpdater(private val context: Context) {
             connection.connectTimeout = 15_000
             connection.readTimeout = 60_000
             connection.setRequestProperty("User-Agent", USER_AGENT)
-            connection.setRequestProperty("Accept", "application/octet-stream, application/json")
+            connection.setRequestProperty(
+                "Accept",
+                "application/vnd.github.raw+json, application/octet-stream, application/json",
+            )
             connection.setRequestProperty("Cache-Control", "no-cache")
             val status = connection.responseCode
             if (status in 300..399) {

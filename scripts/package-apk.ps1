@@ -36,7 +36,7 @@ if (Test-Path $manifestPath) {
 $manifest = [ordered]@{
     versionCode = $VersionCode
     versionName = $VersionName
-    apkUrl = "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk"
+    apkUrl = "https://api.github.com/repos/raul-s-c/languaje_reaccion/contents/apk/lengua-reaccion.apk?ref=main"
     sha256 = $hash
     notes = $releaseNotes
 }
