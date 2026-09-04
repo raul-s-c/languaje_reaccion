@@ -36,7 +36,8 @@ if (Test-Path $manifestPath) {
 $manifest = [ordered]@{
     versionCode = $VersionCode
     versionName = $VersionName
-    apkUrl = "https://api.github.com/repos/raul-s-c/languaje_reaccion/contents/apk/lengua-reaccion.apk?ref=main"
+    # Keep the APK itself on the raw endpoint so clients older than 0.2.1 receive binary data.
+    apkUrl = "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk"
     sha256 = $hash
     notes = $releaseNotes
 }

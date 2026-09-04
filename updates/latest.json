@@ -1,7 +1,7 @@
 {
   "versionCode": 4,
   "versionName": "0.2.1",
-  "apkUrl": "https://api.github.com/repos/raul-s-c/languaje_reaccion/contents/apk/lengua-reaccion.apk?ref=main",
+  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk",
   "sha256": "376227ce87bc88912e00475b88aec0dc37b4d376440e679efe58412bb901d493",
   "notes": "Whisper local, modelos Tiny/Base/Small/Turbo, subtítulos sincronizados, lecturas IPADIC, GPT-5.4 Mini, Plex/URL y exportación SRT/VTT."
 }
