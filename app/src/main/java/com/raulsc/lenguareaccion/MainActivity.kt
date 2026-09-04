@@ -12,7 +12,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -71,6 +70,7 @@ private fun ReactorHome() {
     val density = LocalDensity.current
     val wide = with(density) { LocalWindowInfo.current.containerSize.width.toDp() >= 840.dp }
     var videoUri by remember { mutableStateOf<Uri?>(null) }
+    var previousCrash by remember { mutableStateOf(CrashReporter.read(context)) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         runCatching {
@@ -89,6 +89,16 @@ private fun ReactorHome() {
             .padding(horizontal = if (wide) 28.dp else 16.dp, vertical = 18.dp),
     ) {
         AppHeader()
+        previousCrash?.let { crash ->
+            Spacer(Modifier.height(12.dp))
+            CrashNotice(
+                crash = crash,
+                dismiss = {
+                    CrashReporter.clear(context)
+                    previousCrash = null
+                },
+            )
+        }
         Spacer(Modifier.height(18.dp))
 
         if (wide) {
@@ -105,7 +115,7 @@ private fun ReactorHome() {
             }
         } else {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
+                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 PlayerPane(videoUri, { picker.launch(arrayOf("video/*")) }, Modifier.fillMaxWidth())
@@ -242,7 +252,7 @@ private fun StudyPane(modifier: Modifier = Modifier) {
         shape = RoundedCornerShape(20.dp),
     ) {
         Column(
-            modifier = Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
+            modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("Sesión", style = MaterialTheme.typography.titleLarge)
@@ -263,6 +273,30 @@ private fun StudyPane(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
             )
+        }
+    }
+}
+
+@Composable
+private fun CrashNotice(crash: String, dismiss: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Se recuperó un cierre anterior", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    crash.lineSequence().firstOrNull().orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            OutlinedButton(onClick = dismiss) { Text("Descartar") }
         }
     }
 }

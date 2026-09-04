@@ -1,7 +1,7 @@
 {
-  "versionCode": 1,
-  "versionName": "0.1.0",
+  "versionCode": 2,
+  "versionName": "0.1.1",
   "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk",
-  "sha256": "cb9bb65ea5cfea773c7a00d6d19eb96483ee7292b31c7a24a80ee18b65377635",
-  "notes": "Versión 0.1.0 de Lengua Reacción."
+  "sha256": "6421147f1ad3ef90c56b89fa4c0387972e15a06bd4045c1c4fed99ec5ab2c2ca",
+  "notes": "Corrige el cierre al abrir en orientación vertical y añade diagnóstico de fallos."
 }

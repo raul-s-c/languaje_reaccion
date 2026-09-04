@@ -10,13 +10,14 @@ En la primera instalación, Android solicitará permiso para instalar una aplica
 
 > Android siempre exige una confirmación visible para actualizar una APK fuera de Google Play. La aplicación no intenta eludir esa protección.
 
-## Estado de la versión 0.1.0
+## Estado de la versión 0.1.1
 
 - Reproductor de vídeos locales con Media3.
 - Diseño adaptativo para tablet y móvil.
 - Comprobación y descarga de actualizaciones desde este repositorio.
 - Verificación SHA-256 antes de instalar.
 - Limpieza de caché antes de descargar una actualización.
+- Recuperación y diagnóstico de cierres inesperados.
 - Estructura visual inicial japonés → español.
 - Preparada para incorporar Plex y el servicio de transcripción del PC.
 
