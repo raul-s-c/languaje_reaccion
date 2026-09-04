@@ -3,9 +3,12 @@ package com.raulsc.lenguareaccion
 import android.content.Context
 import android.media.AudioFormat
 import android.media.MediaCodec
-import android.media.MediaExtractor
+import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.net.Uri
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.inspector.MediaExtractorCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedOutputStream
@@ -20,6 +23,15 @@ data class ExtractedAudio(
     val durationMillis: Long,
 )
 
+private data class AudioTrack(
+    val index: Int,
+    val format: MediaFormat,
+    val mime: String,
+    val language: String?,
+    val decoderName: String?,
+)
+
+@OptIn(UnstableApi::class)
 object AudioExtractor {
     private const val TARGET_SAMPLE_RATE = 16_000
 
@@ -32,21 +44,55 @@ object AudioExtractor {
         target.parentFile?.mkdirs()
         target.delete()
 
-        val extractor = MediaExtractor()
+        val extractor = MediaExtractorCompat(context)
         var decoder: MediaCodec? = null
         try {
             extractor.setDataSource(context, uri, null)
-            val trackIndex = (0 until extractor.trackCount).firstOrNull { index ->
-                extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
-            } ?: error("El vídeo no contiene una pista de audio compatible")
+            val trackDescriptions = (0 until extractor.trackCount).map { index ->
+                val format = extractor.getTrackFormat(index)
+                val mime = format.getString(MediaFormat.KEY_MIME) ?: "formato desconocido"
+                val language = format.getString(MediaFormat.KEY_LANGUAGE)
+                "pista $index: $mime${language?.let { " ($it)" }.orEmpty()}"
+            }
+            val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+            val audioTracks = (0 until extractor.trackCount).mapNotNull { index ->
+                val format = extractor.getTrackFormat(index)
+                val mime = format.getString(MediaFormat.KEY_MIME)
+                if (mime?.startsWith("audio/") != true) return@mapNotNull null
+                AudioTrack(
+                    index = index,
+                    format = format,
+                    mime = mime,
+                    language = format.getString(MediaFormat.KEY_LANGUAGE),
+                    decoderName = runCatching { codecList.findDecoderForFormat(format) }.getOrNull(),
+                )
+            }
+            if (audioTracks.isEmpty()) error(
+                "No se encontró una pista de audio. Formatos detectados: " +
+                    trackDescriptions.ifEmpty { listOf("ninguno") }.joinToString(),
+            )
+            val selectedTrack = audioTracks
+                .filter { it.decoderName != null }
+                .sortedByDescending { it.language.isJapaneseLanguage() }
+                .firstOrNull()
+                ?: error(
+                    "El vídeo contiene audio, pero HyperOS no puede decodificar sus códecs: " +
+                        audioTracks.joinToString { track ->
+                            "${track.mime}${track.language?.let { " ($it)" }.orEmpty()}"
+                        },
+                )
 
-            val trackFormat = extractor.getTrackFormat(trackIndex)
-            val mime = trackFormat.getString(MediaFormat.KEY_MIME)
-                ?: error("La pista de audio no declara su formato")
+            val trackFormat = selectedTrack.format
+            val mime = selectedTrack.mime
             val durationUs = trackFormat.getLongOrDefault(MediaFormat.KEY_DURATION, 0L)
-            extractor.selectTrack(trackIndex)
+            extractor.selectTrack(selectedTrack.index)
 
-            decoder = MediaCodec.createDecoderByType(mime)
+            decoder = runCatching { MediaCodec.createByCodecName(selectedTrack.decoderName!!) }.getOrElse { error ->
+                throw IllegalArgumentException(
+                    "La pista $mime existe, pero HyperOS no dispone de un decodificador para ese códec",
+                    error,
+                )
+            }
             decoder.configure(trackFormat, null, null, 0)
             decoder.start()
 
@@ -217,3 +263,6 @@ private fun MediaFormat.getIntOrDefault(key: String, fallback: Int): Int =
 
 private fun MediaFormat.getLongOrDefault(key: String, fallback: Long): Long =
     if (containsKey(key)) getLong(key) else fallback
+
+private fun String?.isJapaneseLanguage(): Boolean =
+    this?.lowercase()?.let { it == "ja" || it == "jpn" || it.startsWith("ja-") } == true

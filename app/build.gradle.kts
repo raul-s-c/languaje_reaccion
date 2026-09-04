@@ -12,8 +12,8 @@ android {
         applicationId = "com.raulsc.lenguareaccion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.2.1"
+        versionCode = 5
+        versionName = "0.2.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -77,6 +77,7 @@ dependencies {
     implementation("androidx.compose.material3:material3-android:1.4.0")
     implementation("androidx.media3:media3-exoplayer:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("androidx.media3:media3-inspector:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
 

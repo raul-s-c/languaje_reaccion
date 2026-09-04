@@ -6,7 +6,7 @@ No compartas por chat ni la clave de OpenAI ni un token de Plex. Ambos deben int
 
 1. Desbloquear la Xiaomi Pad 7 Pro, mantenerla en la misma Wi-Fi que el PC y abrir **Lengua Reacción**.
 2. En HyperOS, abrir la información de la app → **Ahorro de batería** → **Sin restricciones**. Permitir notificaciones si Android lo solicita; la notificación mantiene viva una transcripción larga.
-3. Pulsar **Buscar actualización** e instalar la versión 0.2.1. Android pedirá una confirmación visible.
+3. Pulsar **Buscar actualización** e instalar la versión más reciente. Android pedirá una confirmación visible.
 4. Elegir un vídeo japonés corto y claro, idealmente de 30 segundos a 3 minutos, mediante **Abrir vídeo**.
 5. Elegir **Equilibrado (Base, 60 MB)**, descargarlo y pulsar **Generar subtítulos**. Hacer la primera prueba con la tablet conectada al cargador.
 6. Anotar duración del vídeo, tiempo total de transcripción y cualquier frase claramente incorrecta. Una captura basta; no hace falta enviar el vídeo si es privado.
