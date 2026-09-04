@@ -21,6 +21,18 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        getByName("debug") {
+            val stableKey = rootProject.file(".signing/lengua-reaccion.jks")
+            if (stableKey.exists()) {
+                storeFile = stableKey
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

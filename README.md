@@ -34,7 +34,7 @@ Compilar y actualizar la APK pública:
 .\scripts\package-apk.ps1
 ```
 
-Al crear una versión nueva se deben actualizar también `versionCode` y `versionName` en `app/build.gradle.kts`. La firma de esta fase es la clave de depuración estable del PC de desarrollo. Antes de almacenar datos importantes o distribuir la app se migrará una única vez a una clave privada de publicación respaldada.
+Al crear una versión nueva se deben actualizar también `versionCode` y `versionName` en `app/build.gradle.kts`. La carpeta local `.signing/` contiene la clave que mantiene compatibles todas las actualizaciones y está excluida de Git. Debe conservarse una copia privada; perderla impediría instalar versiones nuevas sobre las anteriores.
 
 ## Próximos hitos
 
