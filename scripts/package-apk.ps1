@@ -37,7 +37,7 @@ $manifest = [ordered]@{
     versionCode = $VersionCode
     versionName = $VersionName
     # Keep the APK itself on the raw endpoint so clients older than 0.2.1 receive binary data.
-    apkUrl = "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk"
+    apkUrl = "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk?v=$VersionCode"
     sha256 = $hash
     notes = $releaseNotes
 }
