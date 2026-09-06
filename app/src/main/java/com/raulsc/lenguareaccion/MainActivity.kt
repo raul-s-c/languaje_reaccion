@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,6 +64,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -103,6 +105,9 @@ private fun ReactorHome() {
     }
     var showVideoUrlDialog by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
+    var syncDialog by remember { mutableStateOf(false) }
+    var subtitleOffset by remember(videoUri) { mutableLongStateOf(0L) }
+    var avOffset by remember(videoUri) { mutableLongStateOf(0L) }
     BackHandler(fullscreen) { fullscreen = false }
     DisposableEffect(fullscreen) {
         val window = (context as? android.app.Activity)?.window
@@ -142,11 +147,21 @@ private fun ReactorHome() {
             },
         )
     }
+    if (syncDialog) {
+        SyncDialog(
+            subtitleOffset = subtitleOffset,
+            avOffset = avOffset,
+            onSubtitleOffset = { subtitleOffset = it },
+            onAvOffset = { avOffset = it },
+            dismiss = { syncDialog = false },
+        )
+    }
 
     val playerContent = remember {
         movableContentOf<Uri?, TranscriptionState, Modifier, Boolean> { uri, state, layout, expanded ->
             PlayerPane(uri, state, { picker.launch(arrayOf("video/*")) },
-                { showVideoUrlDialog = true }, layout, expanded, { fullscreen = !fullscreen })
+                { showVideoUrlDialog = true }, layout, expanded, { fullscreen = !fullscreen },
+                { syncDialog = true }, subtitleOffset, avOffset)
         }
     }
     Column(
@@ -240,11 +255,15 @@ private fun PlayerPane(
     modifier: Modifier = Modifier,
     fullscreen: Boolean = false,
     toggleFullscreen: () -> Unit = {},
+    openSync: () -> Unit = {},
+    subtitleOffset: Long = 0L,
+    avOffset: Long = 0L,
 ) {
     var playbackPosition by remember(videoUri) { mutableLongStateOf(0L) }
     val segments = (transcriptionState as? TranscriptionState.Completed)?.segments.orEmpty()
+    val subtitlePosition = playbackPosition - subtitleOffset
     val activeSegment = segments.lastOrNull {
-        playbackPosition >= it.startMillis && playbackPosition < it.endMillis
+        subtitlePosition >= it.startMillis && subtitlePosition < it.endMillis
     }
     Card(
         modifier = modifier,
@@ -266,6 +285,7 @@ private fun PlayerPane(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = openSync) { Text("Sincronización") }
                     TextButton(onClick = toggleFullscreen) { Text(if (fullscreen) "Salir" else "Pantalla completa") }
                     if (!fullscreen) {
                     TextButton(onClick = openVideoUrl) { Text("Plex/URL") }
@@ -293,7 +313,7 @@ private fun PlayerPane(
                     }
                 }
             } else {
-                VideoPlayer(videoUri, onPositionChanged = { playbackPosition = it },
+                VideoPlayer(videoUri, onPositionChanged = { playbackPosition = it }, avOffset = avOffset, fullscreen = fullscreen,
                     modifier = if (fullscreen) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth().height(340.dp))
             }
 
@@ -301,6 +321,51 @@ private fun PlayerPane(
             SubtitlePreview(activeSegment ?: segments.firstOrNull())
         }
     }
+}
+
+@Composable
+@Composable
+private fun SyncDialog(
+    subtitleOffset: Long,
+    avOffset: Long,
+    onSubtitleOffset: (Long) -> Unit,
+    onAvOffset: (Long) -> Unit,
+    dismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Ajustar sincronización") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Los valores positivos desplazan el elemento hacia delante. Ajuste fino en pasos de 100 ms.")
+                Text("Subtítulos: ${subtitleOffset} ms")
+                Slider(
+                    value = subtitleOffset.toFloat(),
+                    onValueChange = { onSubtitleOffset((it / 100f).toLong() * 100L) },
+                    valueRange = -5_000f..5_000f,
+                    steps = 99,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onSubtitleOffset((subtitleOffset - 100).coerceAtLeast(-5_000)) }) { Text("−100") }
+                    OutlinedButton(onClick = { onSubtitleOffset(0) }) { Text("Cero") }
+                    OutlinedButton(onClick = { onSubtitleOffset((subtitleOffset + 100).coerceAtMost(5_000)) }) { Text("+100") }
+                }
+                Text("Audio / vídeo: ${avOffset} ms")
+                Slider(
+                    value = avOffset.toFloat(),
+                    onValueChange = { onAvOffset((it / 100f).toLong() * 100L) },
+                    valueRange = -5_000f..5_000f,
+                    steps = 99,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onAvOffset((avOffset - 100).coerceAtLeast(-5_000)) }) { Text("−100") }
+                    OutlinedButton(onClick = { onAvOffset(0) }) { Text("Cero") }
+                    OutlinedButton(onClick = { onAvOffset((avOffset + 100).coerceAtMost(5_000)) }) { Text("+100") }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Aplicar") } },
+    )
 }
 
 @Composable
@@ -338,7 +403,7 @@ private fun VideoUrlDialog(dismiss: () -> Unit, open: (Uri) -> Unit) {
 }
 
 @Composable
-private fun VideoPlayer(uri: Uri, onPositionChanged: (Long) -> Unit, modifier: Modifier) {
+private fun VideoPlayer(uri: Uri, onPositionChanged: (Long) -> Unit, avOffset: Long, fullscreen: Boolean, modifier: Modifier) {
     val context = LocalContext.current
     val progressStore = remember { context.getSharedPreferences("playback_progress", android.content.Context.MODE_PRIVATE) }
     val progressKey = remember(uri) {
@@ -353,6 +418,14 @@ private fun VideoPlayer(uri: Uri, onPositionChanged: (Long) -> Unit, modifier: M
             prepare()
             playWhenReady = false
         }
+    }
+    var appliedAvOffset by remember(uri) { mutableLongStateOf(0L) }
+    LaunchedEffect(avOffset) {
+        val delta = avOffset - appliedAvOffset
+        if (delta != 0L && player.duration > 0L) {
+            player.seekTo((player.currentPosition + delta).coerceIn(0L, player.duration))
+        }
+        appliedAvOffset = avOffset
     }
     DisposableEffect(player) { onDispose {
         progressStore.edit().putLong(progressKey, player.currentPosition.coerceAtLeast(0L)).apply()
@@ -371,7 +444,12 @@ private fun VideoPlayer(uri: Uri, onPositionChanged: (Long) -> Unit, modifier: M
 
     AndroidView(
         modifier = modifier,
-        factory = { PlayerView(it).apply { this.player = player } },
+        factory = { PlayerView(it).apply {
+            this.player = player
+            resizeMode = if (fullscreen) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            else AspectRatioFrameLayout.RESIZE_MODE_FIT
+            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+        } },
         update = { it.player = player },
     )
 }
