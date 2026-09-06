@@ -1,5 +1,11 @@
 # Procesador local: prototipo v1
 
+En este PC, abre `pc/LenguaReaccion.exe` con doble clic. El ejecutable inicia la
+interfaz y utiliza el motor instalado en `.tools/desktop-venv`; debe permanecer
+en la carpeta `pc` del proyecto. No es un ejecutable portable independiente.
+Puedes crear un acceso directo sin moverlo. El registro de arranque queda en
+`%LOCALAPPDATA%/LenguaReaccion/desktop.log`.
+
 Windows, Python 3.11, FFmpeg y FFprobe en PATH.
 
 Desde la raíz del repositorio:

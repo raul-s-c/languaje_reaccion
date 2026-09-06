@@ -5,6 +5,10 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -97,6 +102,17 @@ private fun ReactorHome() {
         mutableStateOf(preferences.getString("uri", null)?.let(Uri::parse))
     }
     var showVideoUrlDialog by remember { mutableStateOf(false) }
+    var fullscreen by remember { mutableStateOf(false) }
+    BackHandler(fullscreen) { fullscreen = false }
+    DisposableEffect(fullscreen) {
+        val window = (context as? android.app.Activity)?.window
+        val bars = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        if (fullscreen) {
+            bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            bars?.hide(WindowInsetsCompat.Type.systemBars())
+        } else bars?.show(WindowInsetsCompat.Type.systemBars())
+        onDispose { bars?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
     val transcriptionController = remember { LocalTranscriptionController(context) }
     val transcriptionState = transcriptionController.state
     val packagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -127,12 +143,19 @@ private fun ReactorHome() {
         )
     }
 
+    val playerContent = remember {
+        movableContentOf<Uri?, TranscriptionState, Modifier, Boolean> { uri, state, layout, expanded ->
+            PlayerPane(uri, state, { picker.launch(arrayOf("video/*")) },
+                { showVideoUrlDialog = true }, layout, expanded, { fullscreen = !fullscreen })
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = if (wide) 28.dp else 16.dp, vertical = 18.dp),
+            .padding(horizontal = if (fullscreen) 0.dp else if (wide) 28.dp else 16.dp, vertical = if (fullscreen) 0.dp else 18.dp),
     ) {
+        if (!fullscreen) {
         AppHeader()
         TextButton(enabled = videoUri != null, onClick = { packagePicker.launch(arrayOf("*/*")) }) {
             Text("Importar paquete PC para el vídeo abierto (.lrpack)")
@@ -148,19 +171,16 @@ private fun ReactorHome() {
             )
         }
         Spacer(Modifier.height(18.dp))
+        }
 
-        if (wide) {
+        if (fullscreen) {
+            playerContent(videoUri, transcriptionState, Modifier.fillMaxSize(), true)
+        } else if (wide) {
             Row(
                 modifier = Modifier.fillMaxSize(),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                PlayerPane(
-                    videoUri = videoUri,
-                    transcriptionState = transcriptionState,
-                    chooseVideo = { picker.launch(arrayOf("video/*")) },
-                    openVideoUrl = { showVideoUrlDialog = true },
-                    modifier = Modifier.weight(1.65f),
-                )
+                playerContent(videoUri, transcriptionState, Modifier.weight(1.65f), false)
                 StudyPane(
                     videoUri = videoUri,
                     controller = transcriptionController,
@@ -172,13 +192,7 @@ private fun ReactorHome() {
                 modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                PlayerPane(
-                    videoUri = videoUri,
-                    transcriptionState = transcriptionState,
-                    chooseVideo = { picker.launch(arrayOf("video/*")) },
-                    openVideoUrl = { showVideoUrlDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                playerContent(videoUri, transcriptionState, Modifier.fillMaxWidth(), false)
                 StudyPane(videoUri, transcriptionController, Modifier.fillMaxWidth())
             }
         }
@@ -224,6 +238,8 @@ private fun PlayerPane(
     chooseVideo: () -> Unit,
     openVideoUrl: () -> Unit,
     modifier: Modifier = Modifier,
+    fullscreen: Boolean = false,
+    toggleFullscreen: () -> Unit = {},
 ) {
     var playbackPosition by remember(videoUri) { mutableLongStateOf(0L) }
     val segments = (transcriptionState as? TranscriptionState.Completed)?.segments.orEmpty()
@@ -250,9 +266,12 @@ private fun PlayerPane(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = toggleFullscreen) { Text(if (fullscreen) "Salir" else "Pantalla completa") }
+                    if (!fullscreen) {
                     TextButton(onClick = openVideoUrl) { Text("Plex/URL") }
                     OutlinedButton(onClick = chooseVideo) {
                         Text(if (videoUri == null) "Abrir vídeo" else "Cambiar")
+                    }
                     }
                 }
             }
@@ -274,7 +293,8 @@ private fun PlayerPane(
                     }
                 }
             } else {
-                VideoPlayer(videoUri, onPositionChanged = { playbackPosition = it })
+                VideoPlayer(videoUri, onPositionChanged = { playbackPosition = it },
+                    modifier = if (fullscreen) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth().height(340.dp))
             }
 
             Spacer(Modifier.height(14.dp))
@@ -318,7 +338,7 @@ private fun VideoUrlDialog(dismiss: () -> Unit, open: (Uri) -> Unit) {
 }
 
 @Composable
-private fun VideoPlayer(uri: Uri, onPositionChanged: (Long) -> Unit) {
+private fun VideoPlayer(uri: Uri, onPositionChanged: (Long) -> Unit, modifier: Modifier) {
     val context = LocalContext.current
     val progressStore = remember { context.getSharedPreferences("playback_progress", android.content.Context.MODE_PRIVATE) }
     val progressKey = remember(uri) {
@@ -350,7 +370,7 @@ private fun VideoPlayer(uri: Uri, onPositionChanged: (Long) -> Unit) {
     }
 
     AndroidView(
-        modifier = Modifier.fillMaxWidth().height(340.dp),
+        modifier = modifier,
         factory = { PlayerView(it).apply { this.player = player } },
         update = { it.player = player },
     )

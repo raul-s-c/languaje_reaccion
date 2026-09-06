@@ -1,7 +1,7 @@
 {
-  "versionCode": 6,
-  "versionName": "0.3.0",
-  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk?v=6",
-  "sha256": "30164caf8e840524a8f521c27ae40455281687350a2c97beccb92c1d0d266ac6",
-  "notes": "Versión 0.3.0 de Lengua Reacción."
+  "versionCode": 7,
+  "versionName": "0.3.1",
+  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk?v=7",
+  "sha256": "b3553e77ffa47939da04a5234b48278d5c781a8166106d7b5ef83e5d9c69886c",
+  "notes": "Versión 0.3.1 de Lengua Reacción."
 }

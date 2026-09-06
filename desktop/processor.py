@@ -39,7 +39,8 @@ def digest(path):
 
 def probe(path):
     result = subprocess.run(['ffprobe', '-v', 'error', '-show_streams', '-show_format',
-                             '-of', 'json', str(path)], capture_output=True, check=True)
+                             '-of', 'json', str(path)], capture_output=True, check=True,
+                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
     return json.loads(result.stdout)
 
 
@@ -83,7 +84,8 @@ def process(video, destination, model_name='large-v3', device='cuda', log=print)
             wav = Path(temporary) / 'audio.wav'
             subprocess.run(['ffmpeg', '-v', 'error', '-nostdin', '-i', str(video),
                             '-map', f'0:{track["index"]}', '-vn', '-sn', '-ac', '1',
-                            '-ar', '16000', '-c:a', 'pcm_s16le', str(wav)], check=True)
+                            '-ar', '16000', '-c:a', 'pcm_s16le', str(wav)], check=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
             log(f'Transcribiendo japonés: {model_name} / {device}')
             model = WhisperModel(model_name, device=device,
                                  compute_type='int8_float16' if device == 'cuda' else 'int8')
