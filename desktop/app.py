@@ -16,6 +16,9 @@ def main():
     style.theme_use('clam')
     style.configure('TButton', font=('Segoe UI', 11), padding=8)
     style.configure('TLabel', font=('Segoe UI', 11))
+    # Reserve the action bar before packing content: the log must shrink first.
+    actions = ttk.Frame(root, padding=(16, 8))
+    actions.pack(side='bottom', fill='x')
     ttk.Label(root, text='Prepara tu próxima sesión', font=('Segoe UI', 24, 'bold')).pack(anchor='w', padx=16, pady=12)
     ttk.Label(root, text='1. Añade vídeos o una carpeta de serie · 2. Elige destino · 3. Genera tus paquetes').pack(anchor='w', padx=16)
     inputs = []
@@ -50,7 +53,7 @@ def main():
     ttk.Label(root, text='cuda = GPU NVIDIA · cpu = procesador (más lento). Primera ejecución: descarga de modelos.').pack()
     progress = ttk.Progressbar(root, mode='indeterminate')
     progress.pack(fill='x', padx=16, pady=8)
-    output = tk.Text(root, height=17)
+    output = tk.Text(root, height=4)
     output.pack(fill='both', expand=True, padx=16, pady=12)
 
     def start():
@@ -74,9 +77,9 @@ def main():
                 events.put(None)
         threading.Thread(target=worker, daemon=True).start()
 
-    button = ttk.Button(root, text='Preparar episodios', command=start)
-    button.pack(pady=8)
-    ttk.Button(root, text='Abrir carpeta de resultados', command=lambda: os.startfile(destination.get()) if os.path.isdir(destination.get()) else None).pack(pady=4)
+    button = ttk.Button(actions, text='Iniciar · Generar .lrpack', command=start)
+    button.pack(side='left')
+    ttk.Button(actions, text='Abrir carpeta de resultados', command=lambda: os.startfile(destination.get()) if os.path.isdir(destination.get()) else None).pack(side='right')
     def close():
         if str(button['state']) == 'disabled':
             messagebox.showinfo('Procesamiento activo', 'Espera a que termine la cola antes de cerrar.')
