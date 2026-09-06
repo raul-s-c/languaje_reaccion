@@ -1,7 +1,7 @@
 {
-  "versionCode": 5,
-  "versionName": "0.2.2",
-  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk?v=5",
-  "sha256": "db721a5ca0e0b79ef7728db7ae757d2efb76b3ef40c4dcf90311001acbea2ddf",
-  "notes": "Mejora la compatibilidad con MKV y selecciona preferentemente una pista de audio japonesa compatible. Si el códec no está soportado, muestra su formato exacto."
+  "versionCode": 6,
+  "versionName": "0.3.0",
+  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk?v=6",
+  "sha256": "30164caf8e840524a8f521c27ae40455281687350a2c97beccb92c1d0d266ac6",
+  "notes": "Versión 0.3.0 de Lengua Reacción."
 }

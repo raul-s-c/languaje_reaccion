@@ -135,6 +135,18 @@ class LocalTranscriptionController(context: Context) {
 
     fun loadLastTranscript(): List<SubtitleSegment> = transcriptStore.load()
 
+    fun importPackage(uri: Uri, videoUri: Uri) {
+        scope.launch {
+            try {
+                val segments = withContext(Dispatchers.IO) { StudyPackage.read(appContext, uri) }
+                withContext(Dispatchers.IO) { transcriptStore.save(videoUri, selectedModel, segments) }
+                state = TranscriptionState.Completed(segments, 0L)
+            } catch (error: Exception) {
+                state = TranscriptionState.Failed("No se pudo importar: ${error.message}")
+            }
+        }
+    }
+
     fun enrichWithOpenAi() {
         val segments = (state as? TranscriptionState.Completed)?.segments ?: transcriptStore.load()
         if (segments.isEmpty()) {

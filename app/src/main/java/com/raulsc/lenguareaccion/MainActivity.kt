@@ -99,6 +99,9 @@ private fun ReactorHome() {
     var showVideoUrlDialog by remember { mutableStateOf(false) }
     val transcriptionController = remember { LocalTranscriptionController(context) }
     val transcriptionState = transcriptionController.state
+    val packagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && videoUri != null) transcriptionController.importPackage(uri, videoUri!!)
+    }
     var previousCrash by remember { mutableStateOf(CrashReporter.read(context)) }
     DisposableEffect(transcriptionController) { onDispose { transcriptionController.close() } }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -131,6 +134,9 @@ private fun ReactorHome() {
             .padding(horizontal = if (wide) 28.dp else 16.dp, vertical = 18.dp),
     ) {
         AppHeader()
+        TextButton(enabled = videoUri != null, onClick = { packagePicker.launch(arrayOf("*/*")) }) {
+            Text("Importar paquete PC para el vídeo abierto (.lrpack)")
+        }
         previousCrash?.let { crash ->
             Spacer(Modifier.height(12.dp))
             CrashNotice(
@@ -314,17 +320,31 @@ private fun VideoUrlDialog(dismiss: () -> Unit, open: (Uri) -> Unit) {
 @Composable
 private fun VideoPlayer(uri: Uri, onPositionChanged: (Long) -> Unit) {
     val context = LocalContext.current
+    val progressStore = remember { context.getSharedPreferences("playback_progress", android.content.Context.MODE_PRIVATE) }
+    val progressKey = remember(uri) {
+        java.security.MessageDigest.getInstance("SHA-256").digest(uri.toString().toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }
     val player = remember(uri) {
         ExoPlayer.Builder(context).build().apply {
+            trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredAudioLanguage("ja").build()
             setMediaItem(MediaItem.fromUri(uri))
+            seekTo(progressStore.getLong(progressKey, 0L))
             prepare()
             playWhenReady = false
         }
     }
-    DisposableEffect(player) { onDispose { player.release() } }
+    DisposableEffect(player) { onDispose {
+        progressStore.edit().putLong(progressKey, player.currentPosition.coerceAtLeast(0L)).apply()
+        player.release()
+    } }
     LaunchedEffect(player) {
+        var ticks = 0
         while (true) {
             onPositionChanged(player.currentPosition.coerceAtLeast(0L))
+            if (++ticks % 25 == 0) {
+                progressStore.edit().putLong(progressKey, player.currentPosition.coerceAtLeast(0L)).apply()
+            }
             delay(200)
         }
     }

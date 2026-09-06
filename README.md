@@ -10,7 +10,11 @@ La primera instalación necesita permitir APK de esta procedencia. Después pued
 
 El diseño del procesador por lotes para PC, los paquetes de estudio, OneDrive y el historial personal está documentado en [docs/REQUISITOS_PC_TABLET.md](docs/REQUISITOS_PC_TABLET.md).
 
-## Funciones de la versión 0.2.2
+## Funciones de la versión 0.3.0
+
+- Prototipo Windows para preparar vídeos por lotes con Whisper y traducción local: [instrucciones](desktop/README.md).
+- Importación manual de paquetes `.lrpack` para el vídeo abierto y reanudación de posición por URI.
+- Biblioteca automática, historial lingüístico y explicaciones bajo demanda: pendientes.
 
 - Reproductor Media3 para vídeos locales y enlaces HTTP/HTTPS directos, incluidos enlaces de reproducción de Plex.
 - Extracción y conversión del audio a PCM mono de 16 kHz dentro de Android.

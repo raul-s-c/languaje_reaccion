@@ -2,6 +2,25 @@
 
 Estado: borrador de trabajo para validar antes de implementar.
 
+## Decisiones confirmadas el 6 de septiembre de 2026
+
+- PC: Windows 11 Pro, Ryzen 7 5800X (8 núcleos/16 hilos), 16 GB RAM, RTX 3070 con 8 GB de VRAM confirmados por nvidia-smi. El dato WMI de 4 GB no se utilizará.
+- Python 3.11.9 y FFmpeg 8.1 disponibles en el PC.
+- Destino: `C:\Users\rauls\OneDrive\cosas\doblados`.
+- Organización: una carpeta por serie, sin subcarpetas de temporadas; conservar identificadores de temporada/episodio en el nombre.
+- Primera prueba con transcripción y traducción locales. Las explicaciones conceptuales siguen siendo exclusivamente bajo demanda.
+- Vídeo de prueba localizado en `doblados\sakamoto`: Sakamoto Days S01E03 V2.
+- Inspección real con FFprobe: 1503,68 segundos (25 min 3,68 s), vídeo HEVC 1920×1080; pista 1 japonesa E-AC-3 de 6 canales y pista 2 inglesa E-AC-3 de 6 canales.
+- El archivo también contiene subtítulos embebidos; la prueba generará su transcripción desde la pista japonesa, sin utilizarlos.
+- Perfil inicial propuesto: faster-whisper large-v3, CUDA, int8_float16; un episodio a la vez. Medir velocidad y memoria antes de fijar expectativas.
+- Traducción local candidata: NLLB-200 distilled 600M, pendiente de validar calidad japonés–español con diálogos reales. Descargar los modelos inicialmente requiere Internet.
+- Cargar transcriptor y traductor por etapas para limitar memoria. No cargar ambos modelos GPU simultáneamente por defecto.
+- Guardar inicialmente vídeo y paquete como archivos hermanos dentro de la carpeta de serie, evitando duplicar el vídeo dentro del ZIP. Esta es una decisión de implementación revisable.
+- Mantener modelos y temporales fuera de OneDrive; escribir únicamente resultados terminados en el destino sincronizado.
+- La importación desde OneDrive debe verificarse en la tablet: el acceso a archivos individuales no garantiza que su proveedor Android permita autorizar o recorrer una carpeta completa. No dar por probada esa integración hasta ejecutar la prueba.
+- Prototipo 0.3.0: procesador Windows y formato lrpack v1 implementados; importación manual sobre el vídeo abierto y posición por URI. Biblioteca, asociación automática, historial lingüístico y explicaciones conceptuales pendientes.
+- Prueba real: Sakamoto S01E03 procesado con Large v3 CUDA y NLLB local; 305 segmentos, paquete de aproximadamente 34 KB. Integridad y estructura validadas; fidelidad lingüística todavía requiere revisión.
+
 ## 1. Objetivo
 
 Crear un sistema personal para estudiar japonés con vídeos propios, compuesto por:
@@ -344,4 +363,3 @@ Los paquetes de contenido serán inmutables. El progreso personal se guardará e
 6. Si se registra automáticamente toda palabra mostrada o solo después de reproducir una fracción suficiente de la frase.
 7. Política para openings, endings, avances y episodios ya procesados.
 8. Un vídeo corto representativo y, después, un episodio completo para las pruebas de aceptación.
-
