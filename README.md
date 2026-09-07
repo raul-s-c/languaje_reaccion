@@ -10,13 +10,20 @@ La primera instalación necesita permitir APK de esta procedencia. Después pued
 
 El diseño del procesador por lotes para PC, los paquetes de estudio, OneDrive y el historial personal está documentado en [docs/REQUISITOS_PC_TABLET.md](docs/REQUISITOS_PC_TABLET.md).
 
-## Funciones de la versión 0.3.0
+## Novedades de la versión 0.3.2
+
+- Pantalla completa con vídeo a tamaño máximo, subtítulos superpuestos y modos Ajustar / Llenar (recorta).
+- Retardo real de audio y ajuste de subtítulos, independientes o juntos, guardados por vídeo.
+- Controles de reproducción, velocidad y selección de pista de audio. Toca una frase a pantalla completa para estudiar sus palabras.
+- [Uso y pruebas de sincronización](docs/REPRODUCTOR_0.3.2.md).
+
+## Funciones
 
 - Prototipo Windows para preparar vídeos por lotes con Whisper y traducción local: [instrucciones](desktop/README.md).
 - Importación manual de paquetes `.lrpack` para el vídeo abierto y reanudación de posición por URI.
 - Biblioteca automática, historial lingüístico y explicaciones bajo demanda: pendientes.
 
-- Reproductor Media3 para vídeos locales y enlaces HTTP/HTTPS directos, incluidos enlaces de reproducción de Plex.
+- Reproductor LibVLC para vídeos locales y enlaces HTTP/HTTPS directos, incluidos enlaces de reproducción de Plex.
 - Extracción y conversión del audio a PCM mono de 16 kHz dentro de Android.
 - Whisper.cpp nativo ARM64 con cuatro modelos descargables: Tiny, Base, Small y Large v3 Turbo cuantizados.
 - Base como opción recomendada para la Xiaomi Pad 7 Pro y Tiny para pruebas rápidas.
@@ -51,7 +58,7 @@ Al crear una versión nueva hay que incrementar `versionCode` y `versionName` en
 
 ## Arquitectura
 
-- `app/`: interfaz Compose, Media3, audio, persistencia, exportación, OpenAI y actualizador.
+- `app/`: interfaz Compose, LibVLC para reproducción, Media3 para extracción de audio, persistencia, exportación, OpenAI y actualizador.
 - `whisperlib/`: puente Kotlin/JNI y compilación ARM64.
 - `third_party/whisper.cpp`: submódulo oficial del motor.
 - `updates/latest.json`: manifiesto consultado por el actualizador.

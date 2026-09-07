@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -61,10 +62,6 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
-import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -105,18 +102,21 @@ private fun ReactorHome() {
     }
     var showVideoUrlDialog by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
-    var syncDialog by remember { mutableStateOf(false) }
-    var subtitleOffset by remember(videoUri) { mutableLongStateOf(0L) }
-    var avOffset by remember(videoUri) { mutableLongStateOf(0L) }
     BackHandler(fullscreen) { fullscreen = false }
     DisposableEffect(fullscreen) {
         val window = (context as? android.app.Activity)?.window
+        val activity = context as? android.app.Activity
+        val previousOrientation = activity?.requestedOrientation
         val bars = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         if (fullscreen) {
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
             bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             bars?.hide(WindowInsetsCompat.Type.systemBars())
         } else bars?.show(WindowInsetsCompat.Type.systemBars())
-        onDispose { bars?.show(WindowInsetsCompat.Type.systemBars()) }
+        onDispose {
+            bars?.show(WindowInsetsCompat.Type.systemBars())
+            if (previousOrientation != null) activity.requestedOrientation = previousOrientation
+        }
     }
     val transcriptionController = remember { LocalTranscriptionController(context) }
     val transcriptionState = transcriptionController.state
@@ -147,21 +147,10 @@ private fun ReactorHome() {
             },
         )
     }
-    if (syncDialog) {
-        SyncDialog(
-            subtitleOffset = subtitleOffset,
-            avOffset = avOffset,
-            onSubtitleOffset = { subtitleOffset = it },
-            onAvOffset = { avOffset = it },
-            dismiss = { syncDialog = false },
-        )
-    }
-
     val playerContent = remember {
         movableContentOf<Uri?, TranscriptionState, Modifier, Boolean> { uri, state, layout, expanded ->
             PlayerPane(uri, state, { picker.launch(arrayOf("video/*")) },
-                { showVideoUrlDialog = true }, layout, expanded, { fullscreen = !fullscreen },
-                { syncDialog = true }, subtitleOffset, avOffset)
+                { showVideoUrlDialog = true }, layout, expanded, { fullscreen = !fullscreen })
         }
     }
     Column(
@@ -255,10 +244,17 @@ private fun PlayerPane(
     modifier: Modifier = Modifier,
     fullscreen: Boolean = false,
     toggleFullscreen: () -> Unit = {},
-    openSync: () -> Unit = {},
-    subtitleOffset: Long = 0L,
-    avOffset: Long = 0L,
 ) {
+    val context = LocalContext.current
+    val settings = remember { context.getSharedPreferences("playback_sync", android.content.Context.MODE_PRIVATE) }
+    val key = remember(videoUri) { playbackKey(videoUri.toString()) }
+    var subtitleOffset by remember(key) { mutableLongStateOf(settings.getLong("sub_$key", 0L)) }
+    var avOffset by remember(key) { mutableLongStateOf(settings.getLong("audio_$key", 0L)) }
+    var syncDialog by remember { mutableStateOf(false) }
+    if (syncDialog) SyncDialog(subtitleOffset, avOffset,
+        onSubtitleOffset = { subtitleOffset = it; settings.edit().putLong("sub_$key", it).apply() },
+        onAvOffset = { avOffset = it; settings.edit().putLong("audio_$key", it).apply() },
+        dismiss = { syncDialog = false })
     var playbackPosition by remember(videoUri) { mutableLongStateOf(0L) }
     val segments = (transcriptionState as? TranscriptionState.Completed)?.segments.orEmpty()
     val subtitlePosition = playbackPosition - subtitleOffset
@@ -268,9 +264,10 @@ private fun PlayerPane(
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(if (fullscreen) 0.dp else 20.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(if (fullscreen) 0.dp else 16.dp)) {
+            if (!fullscreen) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -285,7 +282,6 @@ private fun PlayerPane(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(onClick = openSync) { Text("Sincronización") }
                     TextButton(onClick = toggleFullscreen) { Text(if (fullscreen) "Salir" else "Pantalla completa") }
                     if (!fullscreen) {
                     TextButton(onClick = openVideoUrl) { Text("Plex/URL") }
@@ -296,6 +292,7 @@ private fun PlayerPane(
                 }
             }
             Spacer(Modifier.height(14.dp))
+            }
 
             if (videoUri == null) {
                 Box(
@@ -313,17 +310,21 @@ private fun PlayerPane(
                     }
                 }
             } else {
+                androidx.compose.runtime.key(videoUri) {
                 VideoPlayer(videoUri, onPositionChanged = { playbackPosition = it }, avOffset = avOffset, fullscreen = fullscreen,
+                    segment = activeSegment, openSync = { syncDialog = true }, toggleFullscreen = toggleFullscreen,
                     modifier = if (fullscreen) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth().height(340.dp))
+                }
             }
 
-            Spacer(Modifier.height(14.dp))
-            SubtitlePreview(activeSegment ?: segments.firstOrNull())
+            if (!fullscreen) {
+                Spacer(Modifier.height(14.dp))
+                if (activeSegment != null || segments.isEmpty()) SubtitlePreview(activeSegment)
+            }
         }
     }
 }
 
-@Composable
 @Composable
 private fun SyncDialog(
     subtitleOffset: Long,
@@ -336,8 +337,8 @@ private fun SyncDialog(
         onDismissRequest = dismiss,
         title = { Text("Ajustar sincronización") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Los valores positivos desplazan el elemento hacia delante. Ajuste fino en pasos de 100 ms.")
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Positivo = se oye o aparece más tarde; negativo = antes. Se guarda para este vídeo. El vídeo no se desplaza.")
                 Text("Subtítulos: ${subtitleOffset} ms")
                 Slider(
                     value = subtitleOffset.toFloat(),
@@ -350,7 +351,7 @@ private fun SyncDialog(
                     OutlinedButton(onClick = { onSubtitleOffset(0) }) { Text("Cero") }
                     OutlinedButton(onClick = { onSubtitleOffset((subtitleOffset + 100).coerceAtMost(5_000)) }) { Text("+100") }
                 }
-                Text("Audio / vídeo: ${avOffset} ms")
+                Text("Audio respecto al vídeo: ${avOffset} ms")
                 Slider(
                     value = avOffset.toFloat(),
                     onValueChange = { onAvOffset((it / 100f).toLong() * 100L) },
@@ -362,9 +363,21 @@ private fun SyncDialog(
                     OutlinedButton(onClick = { onAvOffset(0) }) { Text("Cero") }
                     OutlinedButton(onClick = { onAvOffset((avOffset + 100).coerceAtMost(5_000)) }) { Text("+100") }
                 }
+                Text("Mover los dos juntos (conserva la diferencia)")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        val offsets = shiftTogether(subtitleOffset, avOffset, -100)
+                        onSubtitleOffset(offsets.first); onAvOffset(offsets.second)
+                    }) { Text("Ambos −100") }
+                    TextButton(onClick = {
+                        val offsets = shiftTogether(subtitleOffset, avOffset, 100)
+                        onSubtitleOffset(offsets.first); onAvOffset(offsets.second)
+                    }) { Text("Ambos +100") }
+                }
+                TextButton(onClick = { onSubtitleOffset(0); onAvOffset(0) }) { Text("Restablecer los dos") }
             }
         },
-        confirmButton = { TextButton(onClick = dismiss) { Text("Aplicar") } },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Cerrar · cambios guardados") } },
     )
 }
 
@@ -403,59 +416,7 @@ private fun VideoUrlDialog(dismiss: () -> Unit, open: (Uri) -> Unit) {
 }
 
 @Composable
-private fun VideoPlayer(uri: Uri, onPositionChanged: (Long) -> Unit, avOffset: Long, fullscreen: Boolean, modifier: Modifier) {
-    val context = LocalContext.current
-    val progressStore = remember { context.getSharedPreferences("playback_progress", android.content.Context.MODE_PRIVATE) }
-    val progressKey = remember(uri) {
-        java.security.MessageDigest.getInstance("SHA-256").digest(uri.toString().toByteArray())
-            .joinToString("") { "%02x".format(it) }
-    }
-    val player = remember(uri) {
-        ExoPlayer.Builder(context).build().apply {
-            trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredAudioLanguage("ja").build()
-            setMediaItem(MediaItem.fromUri(uri))
-            seekTo(progressStore.getLong(progressKey, 0L))
-            prepare()
-            playWhenReady = false
-        }
-    }
-    var appliedAvOffset by remember(uri) { mutableLongStateOf(0L) }
-    LaunchedEffect(avOffset) {
-        val delta = avOffset - appliedAvOffset
-        if (delta != 0L && player.duration > 0L) {
-            player.seekTo((player.currentPosition + delta).coerceIn(0L, player.duration))
-        }
-        appliedAvOffset = avOffset
-    }
-    DisposableEffect(player) { onDispose {
-        progressStore.edit().putLong(progressKey, player.currentPosition.coerceAtLeast(0L)).apply()
-        player.release()
-    } }
-    LaunchedEffect(player) {
-        var ticks = 0
-        while (true) {
-            onPositionChanged(player.currentPosition.coerceAtLeast(0L))
-            if (++ticks % 25 == 0) {
-                progressStore.edit().putLong(progressKey, player.currentPosition.coerceAtLeast(0L)).apply()
-            }
-            delay(200)
-        }
-    }
-
-    AndroidView(
-        modifier = modifier,
-        factory = { PlayerView(it).apply {
-            this.player = player
-            resizeMode = if (fullscreen) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            else AspectRatioFrameLayout.RESIZE_MODE_FIT
-            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-        } },
-        update = { it.player = player },
-    )
-}
-
-@Composable
-private fun SubtitlePreview(segment: SubtitleSegment?) {
+internal fun SubtitlePreview(segment: SubtitleSegment?) {
     val tokens by produceState(emptyList<JapaneseToken>(), segment?.japanese) {
         value = if (segment == null) emptyList() else withContext(Dispatchers.Default) {
             runCatching { JapaneseMorphology.analyze(segment.japanese) }.getOrDefault(emptyList())

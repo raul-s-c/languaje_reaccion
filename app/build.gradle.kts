@@ -12,8 +12,9 @@ android {
         applicationId = "com.raulsc.lenguareaccion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.3.1"
+        versionCode = 8
+        versionName = "0.3.2"
+        ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -76,7 +77,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview-android:1.10.0")
     implementation("androidx.compose.material3:material3-android:1.4.0")
     implementation("androidx.media3:media3-exoplayer:1.11.0")
-    implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("org.videolan.android:libvlc-all:3.7.5")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.media3:media3-inspector:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
@@ -84,4 +86,5 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling-android:1.10.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    testImplementation("junit:junit:4.13.2")
 }

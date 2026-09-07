@@ -2,10 +2,13 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $sdkPath = Join-Path $env:LOCALAPPDATA "Android\Sdk"
 $gradle = Join-Path $repoRoot "gradlew.bat"
-$buildRoot = Join-Path $env:TEMP "lengua-reaccion-build"
+$buildRoot = if ($env:LENGUA_REACCION_BUILD_DIR) { $env:LENGUA_REACCION_BUILD_DIR } else { Join-Path $env:TEMP "lengua-reaccion-build" }
 
 if (-not (Test-Path $gradle)) {
     throw "No se encontró el wrapper de Gradle."
+}
+if (-not (Test-Path (Join-Path $repoRoot ".signing/lengua-reaccion.jks"))) {
+    throw "Falta la clave estable .signing/lengua-reaccion.jks. No se publicará una APK con otra firma."
 }
 
 $env:ANDROID_HOME = $sdkPath
