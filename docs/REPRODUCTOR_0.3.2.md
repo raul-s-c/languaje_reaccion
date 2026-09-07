@@ -30,3 +30,13 @@ LibVLC se distribuye bajo LGPL 2.1 o posterior; sus componentes incluyen sus res
 6. Pausar, buscar, cambiar velocidad/pista, consultar palabras, girar y pasar a segundo plano.
 
 Las pruebas unitarias verifican conversión de unidades, desplazamiento conjunto, identificadores de progreso y formato de tiempo. La compilación no sustituye la comprobación audiovisual en el dispositivo.
+
+## Verificación de publicación (7 de septiembre de 2026)
+
+- `assembleDebug`, `testDebugUnitTest`, `lintDebug` y `assembleDebugAndroidTest`: correctos. Cuatro pruebas unitarias pasadas; lint sin errores (20 avisos, de versiones de dependencias, estilo y ABI ChromeOS no incluida).
+- Misma huella SHA-256 del certificado que la APK 0.3.1: `21df4aef74ab95e98745620e0c71a768abba92bbdd594c7a88d4c8efa7c9cdce`.
+- APK verificada con `apksigner` y `zipalign -c -P 16`; todos los segmentos LOAD de las bibliotecas ARM64 alineados a 16 KB.
+- No había dispositivo ADB conectado: las pruebas instrumentadas se compilaron pero no se ejecutaron. Queda pendiente la comprobación audiovisual de la lista anterior en la Xiaomi.
+- El manifiesto apunta a un commit inmutable para que su SHA-256 siempre corresponda al mismo binario, aunque cambie `main`.
+
+Para la siguiente publicación: compilar con `scripts/package-apk.ps1`, confirmar código y APK, sustituir `main` en `apkUrl` por el hash de ese commit y confirmar el manifiesto antes del push. No editar el SHA-256 manualmente.

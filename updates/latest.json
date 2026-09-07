@@ -1,7 +1,7 @@
 {
-  "versionCode": 7,
-  "versionName": "0.3.1",
-  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/main/apk/lengua-reaccion.apk?v=7",
-  "sha256": "b3553e77ffa47939da04a5234b48278d5c781a8166106d7b5ef83e5d9c69886c",
-  "notes": "Versión 0.3.1 de Lengua Reacción."
+  "versionCode": 8,
+  "versionName": "0.3.2",
+  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/14863da0757f806c8bdbb06a4f78021c346b8e70/apk/lengua-reaccion.apk",
+  "sha256": "e7eefb0ff0a7a3d79ea897c997ee346edf1a490ff0104deb3e447bc00873d114",
+  "notes": "Pantalla completa con vídeo a tamaño máximo y modos Ajustar/Llenar. Retardo real de audio y subtítulos independientes o juntos, guardados por vídeo. Selección de audio, velocidad y consulta de palabras sobre la imagen."
 }
