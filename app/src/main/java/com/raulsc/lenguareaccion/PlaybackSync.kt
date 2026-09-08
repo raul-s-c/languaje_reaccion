@@ -5,11 +5,15 @@ internal fun playbackKey(uri: String): String = java.security.MessageDigest.getI
 
 /** Clamp the shared delta, not the individual values, to preserve their separation. */
 internal fun shiftTogether(subtitles: Long, audio: Long, delta: Long): Pair<Long, Long> {
-    val allowed = delta.coerceIn(-5_000L - minOf(subtitles, audio), 5_000L - maxOf(subtitles, audio))
+    val allowed = delta.coerceIn(maxOf(-300_000L - subtitles, -5_000L - audio),
+        minOf(300_000L - subtitles, 5_000L - audio))
     return (subtitles + allowed) to (audio + allowed)
 }
 
 internal fun audioDelayMicros(milliseconds: Long): Long = milliseconds.coerceIn(-5_000L, 5_000L) * 1_000L
+
+internal fun subtitleIsActive(position: Long, start: Long, end: Long, offset: Long): Boolean =
+    position - offset >= start && position - offset < end
 
 internal fun playbackTime(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1000

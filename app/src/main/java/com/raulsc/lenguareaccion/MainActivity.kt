@@ -26,6 +26,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -51,7 +54,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -103,21 +109,26 @@ private fun ReactorHome() {
     var showVideoUrlDialog by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     BackHandler(fullscreen) { fullscreen = false }
+    val activity = context as? android.app.Activity
+    val normalOrientation = remember(activity) { activity?.requestedOrientation }
     DisposableEffect(fullscreen) {
         val window = (context as? android.app.Activity)?.window
-        val activity = context as? android.app.Activity
-        val previousOrientation = activity?.requestedOrientation
         val bars = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         if (fullscreen) {
             activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
             bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             bars?.hide(WindowInsetsCompat.Type.systemBars())
-        } else bars?.show(WindowInsetsCompat.Type.systemBars())
+        } else {
+            if (normalOrientation != null) activity?.requestedOrientation = normalOrientation
+            bars?.show(WindowInsetsCompat.Type.systemBars())
+        }
         onDispose {
             bars?.show(WindowInsetsCompat.Type.systemBars())
-            if (previousOrientation != null) activity.requestedOrientation = previousOrientation
         }
     }
+    DisposableEffect(activity) { onDispose {
+        if (normalOrientation != null) activity?.requestedOrientation = normalOrientation
+    } }
     val transcriptionController = remember { LocalTranscriptionController(context) }
     val transcriptionState = transcriptionController.state
     val packagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -147,16 +158,39 @@ private fun ReactorHome() {
             },
         )
     }
-    val playerContent = remember {
-        movableContentOf<Uri?, TranscriptionState, Modifier, Boolean> { uri, state, layout, expanded ->
-            PlayerPane(uri, state, { picker.launch(arrayOf("video/*")) },
-                { showVideoUrlDialog = true }, layout, expanded, { fullscreen = !fullscreen })
+    val settings = remember { context.getSharedPreferences("playback_sync", android.content.Context.MODE_PRIVATE) }
+    val syncKey = remember(videoUri) { playbackKey(videoUri.toString()) }
+    var subtitleOffset by remember(syncKey) { mutableLongStateOf(settings.getLong("sub_$syncKey", 0L)) }
+    var avOffset by remember(syncKey) { mutableLongStateOf(settings.getLong("audio_$syncKey", 0L)) }
+    var savedSub by remember(syncKey) { mutableLongStateOf(subtitleOffset) }
+    var savedAudio by remember(syncKey) { mutableLongStateOf(avOffset) }
+    var saveMessage by remember(syncKey) { mutableStateOf<String?>(null) }
+    var saving by remember(syncKey) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val saveSync: () -> Unit = {
+        if (!saving) {
+            saving = true
+            val sub = subtitleOffset
+            val audio = avOffset
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    settings.edit().putLong("sub_$syncKey", sub).putLong("audio_$syncKey", audio).commit()
+                }
+                if (ok) { savedSub = sub; savedAudio = audio }
+                saveMessage = if (ok) "Guardado para este vídeo en este dispositivo." else "No se pudo guardar. Vuelve a intentarlo."
+                saving = false
+            }
         }
     }
+    var playbackPosition by remember(videoUri) { mutableLongStateOf(0L) }
+    var seekRequest by remember(videoUri) { mutableStateOf<Pair<Long, Long>?>(null) }
+    var showStudy by remember { mutableStateOf(false) }
+    val segments = (transcriptionState as? TranscriptionState.Completed)?.segments.orEmpty()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(if (fullscreen) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing)
             .padding(horizontal = if (fullscreen) 0.dp else if (wide) 28.dp else 16.dp, vertical = if (fullscreen) 0.dp else 18.dp),
     ) {
         if (!fullscreen) {
@@ -177,27 +211,37 @@ private fun ReactorHome() {
         Spacer(Modifier.height(18.dp))
         }
 
-        if (fullscreen) {
-            playerContent(videoUri, transcriptionState, Modifier.fillMaxSize(), true)
-        } else if (wide) {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                playerContent(videoUri, transcriptionState, Modifier.weight(1.65f), false)
-                StudyPane(
-                    videoUri = videoUri,
-                    controller = transcriptionController,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
+        // Keep both children at fixed composition positions. Fullscreen only changes their bounds.
+        Layout(modifier = Modifier.weight(1f).fillMaxWidth(), content = {
+            PlayerPane(videoUri, transcriptionState, { picker.launch(arrayOf("video/*")) },
+                { showVideoUrlDialog = true }, Modifier.fillMaxSize(), fullscreen,
+                { fullscreen = !fullscreen }, subtitleOffset, avOffset,
+                { subtitleOffset = it; saveMessage = null }, { avOffset = it; saveMessage = null },
+                saveSync, saveMessage, { playbackPosition = it }, seekRequest)
+            Column(Modifier.fillMaxSize()) {
+                Row {
+                    TextButton(onClick = { showStudy = false }) { Text("Subtítulos") }
+                    TextButton(onClick = { showStudy = true }) { Text("Estudio / procesamiento") }
+                }
+                if (showStudy) StudyPane(videoUri, transcriptionController, Modifier.weight(1f))
+                else SubtitleTimeline(segments, playbackPosition, subtitleOffset,
+                    { subtitleOffset = it; saveMessage = null },
+                    { seekRequest = (System.nanoTime() to it) }, saveSync,
+                    savedSub == subtitleOffset && savedAudio == avOffset, saveMessage, Modifier.weight(1f))
             }
-        } else {
-            Column(
-                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                playerContent(videoUri, transcriptionState, Modifier.fillMaxWidth(), false)
-                StudyPane(videoUri, transcriptionController, Modifier.fillMaxWidth())
+        }) { measurables, constraints ->
+            val width = constraints.maxWidth
+            val height = constraints.maxHeight
+            val gap = if (fullscreen) 0 else 12.dp.roundToPx()
+            val playerWidth = if (wide && !fullscreen) (width * .62f).toInt() else width
+            val playerHeight = if (!wide && !fullscreen) (height * .55f).toInt() else height
+            val player = measurables[0].measure(Constraints.fixed(playerWidth, playerHeight))
+            val panelWidth = if (fullscreen) 0 else if (wide) (width - playerWidth - gap).coerceAtLeast(0) else width
+            val panelHeight = if (fullscreen) 0 else if (wide) height else (height - playerHeight - gap).coerceAtLeast(0)
+            val panel = measurables[1].measure(Constraints.fixed(panelWidth, panelHeight))
+            layout(width, height) {
+                player.placeRelative(0, 0)
+                if (!fullscreen) panel.placeRelative(if (wide) playerWidth + gap else 0, if (wide) 0 else playerHeight + gap)
             }
         }
     }
@@ -244,36 +288,33 @@ private fun PlayerPane(
     modifier: Modifier = Modifier,
     fullscreen: Boolean = false,
     toggleFullscreen: () -> Unit = {},
+    subtitleOffset: Long, avOffset: Long,
+    onSubtitleOffset: (Long) -> Unit, onAvOffset: (Long) -> Unit,
+    saveSync: () -> Unit, saveMessage: String?,
+    onPositionChanged: (Long) -> Unit, seekRequest: Pair<Long, Long>?,
 ) {
-    val context = LocalContext.current
-    val settings = remember { context.getSharedPreferences("playback_sync", android.content.Context.MODE_PRIVATE) }
-    val key = remember(videoUri) { playbackKey(videoUri.toString()) }
-    var subtitleOffset by remember(key) { mutableLongStateOf(settings.getLong("sub_$key", 0L)) }
-    var avOffset by remember(key) { mutableLongStateOf(settings.getLong("audio_$key", 0L)) }
     var syncDialog by remember { mutableStateOf(false) }
-    if (syncDialog) SyncDialog(subtitleOffset, avOffset,
-        onSubtitleOffset = { subtitleOffset = it; settings.edit().putLong("sub_$key", it).apply() },
-        onAvOffset = { avOffset = it; settings.edit().putLong("audio_$key", it).apply() },
-        dismiss = { syncDialog = false })
+    val shortWindow = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() < 650.dp || LocalWindowInfo.current.containerSize.width.toDp() < 840.dp }
+    if (syncDialog) SyncDialog(subtitleOffset, avOffset, onSubtitleOffset, onAvOffset,
+        saveSync, saveMessage, dismiss = { syncDialog = false })
     var playbackPosition by remember(videoUri) { mutableLongStateOf(0L) }
     val segments = (transcriptionState as? TranscriptionState.Completed)?.segments.orEmpty()
-    val subtitlePosition = playbackPosition - subtitleOffset
     val activeSegment = segments.lastOrNull {
-        subtitlePosition >= it.startMillis && subtitlePosition < it.endMillis
+        subtitleIsActive(playbackPosition, it.startMillis, it.endMillis, subtitleOffset)
     }
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(if (fullscreen) 0.dp else 20.dp),
     ) {
-        Column(modifier = Modifier.padding(if (fullscreen) 0.dp else 16.dp)) {
+        Column(modifier = Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else 12.dp)) {
             if (!fullscreen) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                if (!shortWindow) Column(modifier = Modifier.weight(1f)) {
                     Text("Reproductor de estudio", style = MaterialTheme.typography.titleLarge)
                     Text(
                         if (videoUri == null) "Elige un vídeo japonés para comenzar"
@@ -311,15 +352,20 @@ private fun PlayerPane(
                 }
             } else {
                 androidx.compose.runtime.key(videoUri) {
-                VideoPlayer(videoUri, onPositionChanged = { playbackPosition = it }, avOffset = avOffset, fullscreen = fullscreen,
-                    segment = activeSegment, openSync = { syncDialog = true }, toggleFullscreen = toggleFullscreen,
-                    modifier = if (fullscreen) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth().height(340.dp))
+                VideoPlayer(videoUri, onPositionChanged = { playbackPosition = it; onPositionChanged(it) }, avOffset = avOffset, fullscreen = fullscreen,
+                    seekRequest = seekRequest, segment = activeSegment, openSync = { syncDialog = true }, toggleFullscreen = toggleFullscreen,
+                    modifier = Modifier.fillMaxWidth().weight(1f))
                 }
             }
 
-            if (!fullscreen) {
+            if (!fullscreen && !shortWindow) {
                 Spacer(Modifier.height(14.dp))
-                if (activeSegment != null || segments.isEmpty()) SubtitlePreview(activeSegment)
+                // Reserve this area even between phrases: changing video bounds every cue can
+                // recreate the decoder surface and also moves the playback controls under a tap.
+                Column(Modifier.height(130.dp).verticalScroll(rememberScrollState())) {
+                    if (activeSegment != null || segments.isEmpty()) SubtitlePreview(activeSegment)
+                    else Text("Sin subtítulo en este instante", Modifier.padding(16.dp))
+                }
             }
         }
     }
@@ -331,6 +377,8 @@ private fun SyncDialog(
     avOffset: Long,
     onSubtitleOffset: (Long) -> Unit,
     onAvOffset: (Long) -> Unit,
+    saveSync: () -> Unit,
+    saveMessage: String?,
     dismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -338,18 +386,17 @@ private fun SyncDialog(
         title = { Text("Ajustar sincronización") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Positivo = se oye o aparece más tarde; negativo = antes. Se guarda para este vídeo. El vídeo no se desplaza.")
+                Text("Positivo = se oye o aparece más tarde; negativo = antes. Pulsa Guardar para conservar el ajuste de este vídeo. El vídeo no se desplaza.")
                 Text("Subtítulos: ${subtitleOffset} ms")
                 Slider(
-                    value = subtitleOffset.toFloat(),
+                    value = subtitleOffset.toFloat().coerceIn(-300_000f, 300_000f),
                     onValueChange = { onSubtitleOffset((it / 100f).toLong() * 100L) },
-                    valueRange = -5_000f..5_000f,
-                    steps = 99,
+                    valueRange = -300_000f..300_000f,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { onSubtitleOffset((subtitleOffset - 100).coerceAtLeast(-5_000)) }) { Text("−100") }
+                    OutlinedButton(onClick = { onSubtitleOffset((subtitleOffset - 100).coerceAtLeast(-300_000)) }) { Text("−100") }
                     OutlinedButton(onClick = { onSubtitleOffset(0) }) { Text("Cero") }
-                    OutlinedButton(onClick = { onSubtitleOffset((subtitleOffset + 100).coerceAtMost(5_000)) }) { Text("+100") }
+                    OutlinedButton(onClick = { onSubtitleOffset((subtitleOffset + 100).coerceAtMost(300_000)) }) { Text("+100") }
                 }
                 Text("Audio respecto al vídeo: ${avOffset} ms")
                 Slider(
@@ -375,9 +422,11 @@ private fun SyncDialog(
                     }) { Text("Ambos +100") }
                 }
                 TextButton(onClick = { onSubtitleOffset(0); onAvOffset(0) }) { Text("Restablecer los dos") }
+                saveMessage?.let { Text(it) }
             }
         },
-        confirmButton = { TextButton(onClick = dismiss) { Text("Cerrar · cambios guardados") } },
+        confirmButton = { TextButton(onClick = saveSync) { Text("Guardar sincronización") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cerrar") } },
     )
 }
 

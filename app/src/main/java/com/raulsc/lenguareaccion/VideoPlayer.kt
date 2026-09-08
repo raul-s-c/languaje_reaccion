@@ -31,7 +31,7 @@ import org.videolan.libvlc.util.VLCVideoLayout
 @Composable
 internal fun VideoPlayer(
     uri: Uri, onPositionChanged: (Long) -> Unit, avOffset: Long, fullscreen: Boolean,
-    segment: SubtitleSegment?, openSync: () -> Unit, toggleFullscreen: () -> Unit, modifier: Modifier,
+    seekRequest: Pair<Long, Long>?, segment: SubtitleSegment?, openSync: () -> Unit, toggleFullscreen: () -> Unit, modifier: Modifier,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -43,6 +43,7 @@ internal fun VideoPlayer(
     var duration by remember(uri) { mutableLongStateOf(0L) }
     var playing by remember(uri) { mutableStateOf(false) }
     var started by remember(uri) { mutableStateOf(false) }
+    var ended by remember(uri) { mutableStateOf(false) }
     var error by remember(uri) { mutableStateOf<String?>(null) }
     var audioWarning by remember(uri) { mutableStateOf(false) }
     var controls by remember { mutableStateOf(true) }
@@ -76,7 +77,8 @@ internal fun VideoPlayer(
                 MediaPlayer.Event.Paused, MediaPlayer.Event.Stopped -> playing = false
                 MediaPlayer.Event.EndReached -> {
                     playing = false
-                    position = 0L
+                    ended = true
+                    position = duration
                     restored = false
                     progress.edit().putLong(key, 0L).apply()
                 }
@@ -100,13 +102,13 @@ internal fun VideoPlayer(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
                 player.pause()
-                progress.edit().putLong(key, position).apply()
+                progress.edit().putLong(key, if (ended) 0L else position).apply()
             }
         }
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
-            progress.edit().putLong(key, position).apply()
+            progress.edit().putLong(key, if (ended) 0L else position).apply()
             player.setEventListener(null)
             player.stop()
             player.detachViews()
@@ -124,7 +126,7 @@ internal fun VideoPlayer(
             if (player.isPlaying) position = player.time.coerceAtLeast(0)
             duration = player.length.coerceAtLeast(0)
             positionCallback(position)
-            if (++ticks % 25 == 0) progress.edit().putLong(key, position).apply()
+            if (++ticks % 25 == 0) progress.edit().putLong(key, if (ended) 0L else position).apply()
             delay(200)
         }
     }
@@ -133,9 +135,18 @@ internal fun VideoPlayer(
     }
     fun seek(target: Long) {
         if (player.isSeekable) {
-            position = target.coerceIn(0L, duration)
+            position = target.coerceIn(0L, player.length.coerceAtLeast(0L))
             player.setTime(position)
             positionCallback(position)
+        }
+    }
+    LaunchedEffect(player, seekRequest, started) {
+        seekRequest?.let {
+            if (!started || ended) {
+                if (ended) { player.stop(); ended = false; position = 0L }
+                player.play()
+            }
+            if (started) seek(it.second)
         }
     }
     studySegment?.let { selected ->
@@ -156,6 +167,7 @@ internal fun VideoPlayer(
                 }
             } }, confirmButton = { TextButton(onClick = { showTracks = false }) { Text("Cerrar") } })
     }
+    LaunchedEffect(fullscreen) { controls = true }
     Box(modifier.background(Color.Black).clipToBounds()) {
         AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx ->
             VLCVideoLayout(ctx).apply { player.attachViews(this, null, false, true) }
@@ -165,6 +177,8 @@ internal fun VideoPlayer(
             if (player.videoScale != scale) player.videoScale = scale
         })
         Box(Modifier.fillMaxSize().clickable { controls = !controls })
+        if (!started && error == null) Text("Pulsa Reproducir para cargar el vídeo",
+            Modifier.align(Alignment.Center).padding(16.dp), color = Color.White)
         // These are overlays: they never shrink the available video surface.
         if (controls) Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color.Black.copy(alpha = .75f)),
             horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -188,7 +202,12 @@ internal fun VideoPlayer(
                 valueRange = 0f..duration.toFloat().coerceAtLeast(1f), enabled = started && duration > 0 && player.isSeekable)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { seek(position - 10_000) }) { Text("−10 s", color = Color.White) }
-                TextButton(enabled = error == null, onClick = { if (playing) player.pause() else player.play() }) {
+                TextButton(enabled = error == null, onClick = {
+                    if (playing) player.pause() else {
+                        if (ended) { player.stop(); ended = false; position = 0L }
+                        player.play()
+                    }
+                }) {
                     Text(if (playing) "Pausa" else "Reproducir", color = Color.White)
                 }
                 TextButton(onClick = { seek(position + 10_000) }) { Text("+10 s", color = Color.White) }
