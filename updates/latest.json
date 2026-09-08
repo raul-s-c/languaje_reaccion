@@ -1,7 +1,7 @@
 {
-  "versionCode": 8,
-  "versionName": "0.3.2",
-  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/14863da0757f806c8bdbb06a4f78021c346b8e70/apk/lengua-reaccion.apk",
-  "sha256": "e7eefb0ff0a7a3d79ea897c997ee346edf1a490ff0104deb3e447bc00873d114",
-  "notes": "Pantalla completa con vídeo a tamaño máximo y modos Ajustar/Llenar. Retardo real de audio y subtítulos independientes o juntos, guardados por vídeo. Selección de audio, velocidad y consulta de palabras sobre la imagen."
+  "versionCode": 9,
+  "versionName": "0.3.3",
+  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/84b5387c23d4e5b524f085e03db2c4522ae845a5/apk/lengua-reaccion.apk",
+  "sha256": "6dcb2bda2f0b3b3a58e3e3899f590a59bc106013f0238cf97634ff3dcec9468e",
+  "notes": "Listado de subtítulos con tiempos originales y ajustados, adelantar/retrasar y alinear frases. Guardado confirmado por vídeo. Reproductor estable al entrar y salir de pantalla completa y entre subtítulos."
 }
