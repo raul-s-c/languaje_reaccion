@@ -132,10 +132,18 @@ private fun ReactorHome() {
     val transcriptionController = remember { LocalTranscriptionController(context) }
     LaunchedEffect(videoUri) { transcriptionController.selectVideo(videoUri) }
     val transcriptionState = if (transcriptionController.currentVideo == videoUri) transcriptionController.state else TranscriptionState.Idle
-    var packageVideo by remember { mutableStateOf<Uri?>(null) }
+    var pendingPackage by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Uri?>(null) }
     val packagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) packageVideo?.let { transcriptionController.importPackage(uri, it) }
-        packageVideo = null
+        if (uri != null) { PackageVideos.rememberPermission(context, uri); pendingPackage = uri }
+    }
+    pendingPackage?.let { packageUri ->
+        PackageImportDialog(packageUri, videoUri, dismiss = { pendingPackage = null }) { target ->
+            transcriptionController.selectVideo(target)
+            videoUri = target
+            preferences.edit().putString("uri", target.toString()).apply()
+            transcriptionController.importPackage(packageUri, target)
+            pendingPackage = null
+        }
     }
     var previousCrash by remember { mutableStateOf(CrashReporter.read(context)) }
     DisposableEffect(transcriptionController) { onDispose { transcriptionController.close() } }
@@ -206,8 +214,8 @@ private fun ReactorHome() {
     ) {
         if (!fullscreen) {
         AppHeader()
-        TextButton(enabled = videoUri != null, onClick = { packageVideo = videoUri; packagePicker.launch(arrayOf("*/*")) }) {
-            Text("Importar paquete PC para el vídeo abierto (.lrpack)")
+        TextButton(onClick = { packagePicker.launch(arrayOf("*/*")) }) {
+            Text("Importar paquete PC (.lrpack)")
         }
         previousCrash?.let { crash ->
             Spacer(Modifier.height(12.dp))

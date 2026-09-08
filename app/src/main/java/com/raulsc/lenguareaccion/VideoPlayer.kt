@@ -22,6 +22,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -52,6 +56,8 @@ internal fun VideoPlayer(
     var scrub by remember(uri) { mutableStateOf<Float?>(null) }
     var studySegment by remember(uri) { mutableStateOf<SubtitleSegment?>(null) }
     var showTracks by remember(uri) { mutableStateOf(false) }
+    var ready by remember(uri) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val vlc = remember(uri) {
         LibVLC(context.applicationContext, arrayListOf("--audio-language=ja,jpn", "--no-sub-autodetect-file"))
     }
@@ -88,17 +94,33 @@ internal fun VideoPlayer(
                 }
             }
         }
-        runCatching {
-            val media = if (uri.scheme == "content") {
-                descriptor = context.contentResolver.openFileDescriptor(uri, "r")
-                Media(vlc, requireNotNull(descriptor) { "No se puede abrir el archivo" }.fileDescriptor)
-            } else Media(vlc, uri)
+        // Cloud providers may download the entire video here. Never block the UI thread.
+        val opening = scope.launch(Dispatchers.IO) {
             try {
-                media.setHWDecoderEnabled(true, false)
-                media.addOption(":sub-track=-1")
-                player.media = media
-            } finally { media.release() }
-        }.onFailure { error = "No se puede abrir el vídeo. Vuelve a seleccionarlo con Abrir vídeo." }
+                val opened = if (uri.scheme == "content")
+                    requireNotNull(context.contentResolver.openFileDescriptor(uri, "r")) else null
+                var transferred = false
+                try {
+                    withContext(Dispatchers.Main.immediate) {
+                        val media = if (opened != null) Media(vlc, opened.fileDescriptor) else Media(vlc, uri)
+                        try {
+                            media.setHWDecoderEnabled(true, false)
+                            media.addOption(":sub-track=-1")
+                            player.media = media
+                            descriptor = opened
+                            transferred = true
+                            ready = true
+                        } finally { media.release() }
+                    }
+                } finally { if (!transferred) opened?.close() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                withContext(Dispatchers.Main.immediate) {
+                    error = "No se puede abrir el vídeo. Vuelve a seleccionarlo con Abrir vídeo."
+                }
+            }
+        }
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
                 player.pause()
@@ -107,6 +129,7 @@ internal fun VideoPlayer(
         }
         lifecycle.addObserver(observer)
         onDispose {
+            opening.cancel()
             lifecycle.removeObserver(observer)
             progress.edit().putLong(key, if (ended) 0L else position).apply()
             player.setEventListener(null)
@@ -140,7 +163,8 @@ internal fun VideoPlayer(
             positionCallback(position)
         }
     }
-    LaunchedEffect(player, seekRequest, started) {
+    LaunchedEffect(player, seekRequest, started, ready) {
+        if (!ready) return@LaunchedEffect
         seekRequest?.let {
             if (!started || ended) {
                 if (ended) { player.stop(); ended = false; position = 0L }
@@ -177,7 +201,7 @@ internal fun VideoPlayer(
             if (player.videoScale != scale) player.videoScale = scale
         })
         Box(Modifier.fillMaxSize().clickable { controls = !controls })
-        if (!started && error == null) Text("Pulsa Reproducir para cargar el vídeo",
+        if (!started && error == null) Text(if (ready) "Pulsa Reproducir para cargar el vídeo" else "Abriendo vídeo… Si está en la nube, puede tardar. Puedes cambiar de vídeo mientras tanto.",
             Modifier.align(Alignment.Center).padding(16.dp), color = Color.White)
         // These are overlays: they never shrink the available video surface.
         if (controls) Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color.Black.copy(alpha = .75f)),
@@ -202,7 +226,7 @@ internal fun VideoPlayer(
                 valueRange = 0f..duration.toFloat().coerceAtLeast(1f), enabled = started && duration > 0 && player.isSeekable)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { seek(position - 10_000) }) { Text("−10 s", color = Color.White) }
-                TextButton(enabled = error == null, onClick = {
+                TextButton(enabled = ready && error == null, onClick = {
                     if (playing) player.pause() else {
                         if (ended) { player.stop(); ended = false; position = 0L }
                         player.play()
