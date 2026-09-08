@@ -1,7 +1,7 @@
 {
-  "versionCode": 9,
-  "versionName": "0.3.3",
-  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/84b5387c23d4e5b524f085e03db2c4522ae845a5/apk/lengua-reaccion.apk",
-  "sha256": "6dcb2bda2f0b3b3a58e3e3899f590a59bc106013f0238cf97634ff3dcec9468e",
-  "notes": "Listado de subtítulos con tiempos originales y ajustados, adelantar/retrasar y alinear frases. Guardado confirmado por vídeo. Reproductor estable al entrar y salir de pantalla completa y entre subtítulos."
+  "versionCode": 10,
+  "versionName": "0.3.4",
+  "apkUrl": "https://raw.githubusercontent.com/raul-s-c/languaje_reaccion/ff779e1391875c21cda5f0819fae01023b4dda91/apk/lengua-reaccion.apk",
+  "sha256": "f881e4cde040e820a12d14f606f64f607e2b5c3ec3efcf3234b7e9cd4f27bef7",
+  "notes": "Subtítulos guardados por vídeo y verificación del archivo al importar lrpack. Rechazo de paquetes de otro episodio, nombre del vídeo visible y restablecimiento del ajuste de subtítulos al importar. Vuelve a importar los paquetes corregidos; los antiguos no se reparan con esta actualización."
 }
