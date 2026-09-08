@@ -9,6 +9,8 @@ import androidx.compose.runtime.setValue
 import com.whispercpp.whisper.WhisperContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -35,7 +37,8 @@ sealed interface TranscriptionState {
     data class ExtractingAudio(val percent: Int) : TranscriptionState
     data class Transcribing(val percent: Int) : TranscriptionState
     data class Enriching(val percent: Int) : TranscriptionState
-    data class Completed(val segments: List<SubtitleSegment>, val elapsedMillis: Long) : TranscriptionState
+    data class Completed(val segments: List<SubtitleSegment>, val elapsedMillis: Long, val source: String = "") : TranscriptionState
+    data class Importing(val percent: Int) : TranscriptionState
     data class Failed(val message: String) : TranscriptionState
 }
 
@@ -50,8 +53,33 @@ class LocalTranscriptionController(context: Context) {
     var selectedModel by mutableStateOf(loadSelectedModel())
         private set
 
-    var state by mutableStateOf<TranscriptionState>(initialState())
+    var currentVideo by mutableStateOf<Uri?>(null)
         private set
+    var importRevision by mutableStateOf(0L)
+        private set
+    private var generation = 0L
+    private var importJob: Job? = null
+
+    var state by mutableStateOf<TranscriptionState>(TranscriptionState.Idle)
+        private set
+
+    fun selectVideo(uri: Uri?, reload: Boolean = false) {
+        if (currentVideo == uri && !reload) return
+        importJob?.cancel()
+        currentVideo = uri
+        val ticket = ++generation
+        state = readyState()
+        if (uri != null) scope.launch {
+            val saved = withContext(Dispatchers.IO) { transcriptStore.load(uri) }
+            if (ticket == generation && saved != null) state = TranscriptionState.Completed(saved.segments, 0, saved.source)
+        }
+    }
+
+    private fun publish(ticket: Long, value: TranscriptionState) {
+        if (generation == ticket) state = value
+    }
+    private fun readyState(): TranscriptionState =
+        if (modelStore.isInstalled(selectedModel)) TranscriptionState.Ready(selectedModel) else TranscriptionState.Idle
 
     fun isInstalled(model: WhisperModel = selectedModel): Boolean = modelStore.isInstalled(model)
 
@@ -68,23 +96,24 @@ class LocalTranscriptionController(context: Context) {
     fun selectModel(model: WhisperModel) {
         selectedModel = model
         preferences.edit().putString("model", model.name).apply()
-        state = if (modelStore.isInstalled(model)) TranscriptionState.Ready(model) else TranscriptionState.Idle
+        if (state !is TranscriptionState.Completed) state = readyState()
     }
 
     fun downloadSelectedModel() {
         val model = selectedModel
+        val ticket = ++generation
         state = TranscriptionState.DownloadingModel(model, 0)
         ProcessingService.start(appContext, "Descargando ${model.label}")
         scope.launch {
             try {
                 runCatching {
                     modelStore.download(model) { percent ->
-                        scope.launch { state = TranscriptionState.DownloadingModel(model, percent) }
+                        scope.launch { publish(ticket, TranscriptionState.DownloadingModel(model, percent)) }
                     }
                 }.onSuccess {
-                    state = TranscriptionState.Ready(model)
+                    publish(ticket, readyState())
                 }.onFailure { error ->
-                    state = TranscriptionState.Failed(error.readableMessage("No se pudo descargar el modelo"))
+                    publish(ticket, TranscriptionState.Failed(error.readableMessage("No se pudo descargar el modelo")))
                 }
             } finally {
                 ProcessingService.stop(appContext)
@@ -93,6 +122,9 @@ class LocalTranscriptionController(context: Context) {
     }
 
     fun transcribe(videoUri: Uri) {
+        selectVideo(videoUri)
+        val ticket = ++generation
+        val model = selectedModel
         if (!modelStore.isInstalled(selectedModel)) {
             state = TranscriptionState.Failed("Descarga primero el modelo ${selectedModel.label}")
             return
@@ -109,22 +141,20 @@ class LocalTranscriptionController(context: Context) {
             try {
                 state = TranscriptionState.ExtractingAudio(0)
                 val audio = AudioExtractor.extractJapaneseSpeech(appContext, videoUri) { percent ->
-                    scope.launch { state = TranscriptionState.ExtractingAudio(percent) }
+                    scope.launch { publish(ticket, TranscriptionState.ExtractingAudio(percent)) }
                 }
                 pcmFile = audio.pcmFile
                 val segments = LocalWhisperTranscriber.transcribe(
                     pcmFile = audio.pcmFile,
-                    modelFile = modelStore.file(selectedModel),
+                    modelFile = modelStore.file(model),
                 ) { percent ->
-                    scope.launch { state = TranscriptionState.Transcribing(percent) }
+                    scope.launch { publish(ticket, TranscriptionState.Transcribing(percent)) }
                 }
-                transcriptStore.save(videoUri, selectedModel, segments)
-                state = TranscriptionState.Completed(
-                    segments = segments,
-                    elapsedMillis = System.currentTimeMillis() - started,
-                )
+                if (ticket != generation) return@launch
+                withContext(Dispatchers.IO) { transcriptStore.save(videoUri, model, segments) }
+                publish(ticket, TranscriptionState.Completed(segments, System.currentTimeMillis() - started, "Generados desde el audio de este vídeo"))
             } catch (error: Exception) {
-                state = TranscriptionState.Failed(error.readableMessage("La transcripción ha fallado"))
+                publish(ticket, TranscriptionState.Failed(error.readableMessage("La transcripción ha fallado")))
             } finally {
                 pcmFile?.delete()
                 if (wakeLock.isHeld) wakeLock.release()
@@ -133,22 +163,46 @@ class LocalTranscriptionController(context: Context) {
         }
     }
 
-    fun loadLastTranscript(): List<SubtitleSegment> = transcriptStore.load()
+    fun loadLastTranscript(): List<SubtitleSegment> = (state as? TranscriptionState.Completed)?.segments.orEmpty()
 
     fun importPackage(uri: Uri, videoUri: Uri) {
-        scope.launch {
+        if (videoUri != currentVideo) {
+            state = TranscriptionState.Failed("El vídeo cambió mientras elegías el paquete. Vuelve a importarlo para el vídeo abierto.")
+            return
+        }
+        importJob?.cancel()
+        val ticket = ++generation
+        val model = selectedModel
+        state = TranscriptionState.Importing(-1)
+        importJob = scope.launch {
             try {
-                val segments = withContext(Dispatchers.IO) { StudyPackage.read(appContext, uri) }
-                withContext(Dispatchers.IO) { transcriptStore.save(videoUri, selectedModel, segments) }
-                state = TranscriptionState.Completed(segments, 0L)
+                val study = withContext(Dispatchers.IO) { StudyPackage.readPackage(appContext, uri) }
+                StudyPackage.verifyVideo(appContext, videoUri, study) { percent ->
+                    scope.launch { publish(ticket, TranscriptionState.Importing(percent)) }
+                }
+                if (ticket != generation) return@launch
+                val source = "Paquete verificado: ${study.videoFilename}"
+                withContext(Dispatchers.IO) {
+                    transcriptStore.save(videoUri, model, study.segments, source)
+                    check(appContext.getSharedPreferences("playback_sync", Context.MODE_PRIVATE).edit()
+                        .remove("sub_${playbackKey(videoUri.toString())}").commit()) { "No se pudo restablecer el ajuste de subtítulos" }
+                }
+                if (ticket == generation) {
+                    state = TranscriptionState.Completed(study.segments, 0L, source)
+                    importRevision++
+                }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
-                state = TranscriptionState.Failed("No se pudo importar: ${error.message}")
+                publish(ticket, TranscriptionState.Failed("No se pudo importar: ${error.message}"))
             }
         }
     }
 
     fun enrichWithOpenAi() {
-        val segments = (state as? TranscriptionState.Completed)?.segments ?: transcriptStore.load()
+        val videoUri = currentVideo ?: return
+        val completed = state as? TranscriptionState.Completed
+        val segments = completed?.segments.orEmpty()
         if (segments.isEmpty()) {
             state = TranscriptionState.Failed("No hay una transcripción que traducir")
             return
@@ -158,18 +212,22 @@ class LocalTranscriptionController(context: Context) {
             state = TranscriptionState.Failed("Configura primero tu clave de OpenAI")
             return
         }
+        val ticket = ++generation
+        val model = selectedModel
         scope.launch {
             ProcessingService.start(appContext, "Traduciendo con GPT-5.4 Mini")
             try {
                 runCatching {
                     OpenAiStudyService.enrich(apiKey, segments) { percent ->
-                        scope.launch { state = TranscriptionState.Enriching(percent) }
+                        scope.launch { publish(ticket, TranscriptionState.Enriching(percent)) }
                     }
                 }.onSuccess { enriched ->
-                    transcriptStore.save(Uri.EMPTY, selectedModel, enriched)
-                    state = TranscriptionState.Completed(enriched, 0L)
+                    if (ticket == generation) {
+                        withContext(Dispatchers.IO) { transcriptStore.save(videoUri, model, enriched, completed?.source.orEmpty()) }
+                        publish(ticket, TranscriptionState.Completed(enriched, 0L, completed?.source.orEmpty()))
+                    }
                 }.onFailure { error ->
-                    state = TranscriptionState.Failed(error.readableMessage("No se pudo completar el estudio con IA"))
+                    publish(ticket, TranscriptionState.Failed(error.readableMessage("No se pudo completar el estudio con IA")))
                 }
             } finally {
                 ProcessingService.stop(appContext)
@@ -178,20 +236,11 @@ class LocalTranscriptionController(context: Context) {
     }
 
     fun clearFailure() {
-        state = if (isInstalled()) TranscriptionState.Ready(selectedModel) else TranscriptionState.Idle
+        selectVideo(currentVideo, reload = true)
     }
 
     fun close() {
         scope.cancel()
-    }
-
-    private fun initialState(): TranscriptionState {
-        val saved = transcriptStore.load()
-        return when {
-            saved.isNotEmpty() -> TranscriptionState.Completed(saved, 0L)
-            modelStore.isInstalled(selectedModel) -> TranscriptionState.Ready(selectedModel)
-            else -> TranscriptionState.Idle
-        }
     }
 
     private fun loadSelectedModel(): WhisperModel = runCatching {
@@ -298,54 +347,6 @@ suspend fun runWhisperSelfTest(context: Context, modelType: WhisperModel): Strin
         whisper.release()
         if (wakeLock.isHeld) wakeLock.release()
     }
-}
-
-private class TranscriptStore(context: Context) {
-    private val file = File(context.filesDir, "last-transcript.json")
-
-    fun save(uri: Uri, model: WhisperModel, segments: List<SubtitleSegment>) {
-        val persistedUri = if (uri == Uri.EMPTY && file.isFile) {
-            runCatching { JSONObject(file.readText()).optString("videoUri") }.getOrDefault("")
-        } else {
-            uri.toString()
-        }
-        val root = JSONObject()
-            .put("videoUri", persistedUri)
-            .put("model", model.name)
-            .put("createdAt", System.currentTimeMillis())
-            .put("segments", JSONArray().apply {
-                segments.forEach { segment ->
-                    put(
-                        JSONObject()
-                            .put("startMillis", segment.startMillis)
-                            .put("endMillis", segment.endMillis)
-                            .put("japanese", segment.japanese)
-                            .put("spanish", segment.spanish)
-                            .put("reading", segment.reading),
-                    )
-                }
-            })
-        file.writeText(root.toString())
-    }
-
-    fun load(): List<SubtitleSegment> = runCatching {
-        if (!file.isFile) return emptyList()
-        val array = JSONObject(file.readText()).getJSONArray("segments")
-        buildList {
-            for (index in 0 until array.length()) {
-                val item = array.getJSONObject(index)
-                add(
-                    SubtitleSegment(
-                        startMillis = item.getLong("startMillis"),
-                        endMillis = item.getLong("endMillis"),
-                        japanese = item.getString("japanese"),
-                        spanish = item.optString("spanish"),
-                        reading = item.optString("reading"),
-                    ),
-                )
-            }
-        }
-    }.getOrDefault(emptyList())
 }
 
 private fun BufferedInputStream.readChunk(buffer: ByteArray): Int {

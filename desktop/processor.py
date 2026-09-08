@@ -56,9 +56,15 @@ def discover(inputs):
 
 def process(video, destination, model_name='large-v3', device='cuda', log=print):
     configure_cuda()
-    from faster_whisper import WhisperModel
+
     log(f'Inspeccionando {video.name}')
     metadata = probe(video)
+    from embedded_subtitles import build_embedded_package, speech_segments
+    identity = digest(video)
+    embedded = build_embedded_package(video, destination, metadata, identity, log)
+    if embedded is not None:
+        return embedded
+    from faster_whisper import WhisperModel
     audio = [s for s in metadata['streams'] if s['codec_type'] == 'audio']
     japanese = [s for s in audio if s.get('tags', {}).get('language') in ('ja', 'jpn')]
     if not japanese and len(audio) != 1:
@@ -71,13 +77,14 @@ def process(video, destination, model_name='large-v3', device='cuda', log=print)
     if target.exists():
         with zipfile.ZipFile(target) as archive:
             existing = json.loads(archive.read('study.json'))
-        if existing.get('videoId') == identity and existing.get('model') == model_name:
+        if existing.get('videoId') == identity and existing.get('model') == model_name and existing.get('generatorVersion') == 2:
             log('Paquete ya preparado; omitido.')
             return target
-        raise FileExistsError(f'Ya existe un paquete diferente: {target}')
+        if existing.get('videoId') != identity:
+            raise FileExistsError(f'Ya existe un paquete diferente: {target}')
     cache = Path(os.environ.get('LOCALAPPDATA', tempfile.gettempdir())) / 'LenguaReaccion' / 'jobs'
     cache.mkdir(parents=True, exist_ok=True)
-    checkpoint = cache / f'{identity}-{model_name}.json'
+    checkpoint = cache / f'{identity}-{model_name}-word-cues-v2.json'
     segments = json.loads(checkpoint.read_text(encoding='utf-8')) if checkpoint.exists() else []
     if not segments:
         with tempfile.TemporaryDirectory(prefix='lr-audio-') as temporary:
@@ -92,11 +99,7 @@ def process(video, destination, model_name='large-v3', device='cuda', log=print)
             result, info = model.transcribe(str(wav), language='ja', beam_size=5,
                                             vad_filter=True, word_timestamps=True)
             for segment in result:
-                if not segment.text.strip() or round(segment.end * 1000) <= round(segment.start * 1000):
-                    continue
-                segments.append({'startMillis': round(segment.start * 1000),
-                                 'endMillis': round(segment.end * 1000),
-                                 'japanese': segment.text.strip(), 'spanish': '', 'reading': ''})
+                segments.extend(speech_segments(segment))
                 log(f'Transcripción {segment.end:.0f}/{info.duration:.0f} s')
             del model
             gc.collect()
@@ -143,7 +146,7 @@ def process(video, destination, model_name='large-v3', device='cuda', log=print)
         segment['reading'] = ''.join(t['reading'] for t in tokens)
         write_json(checkpoint, segments)
         log(f'Traducido {index + 1}/{len(segments)}')
-    content = {'formatVersion': 1, 'videoId': identity, 'videoFilename': video.name,
+    content = {'formatVersion': 1, 'generatorVersion': 2, 'videoId': identity, 'videoFilename': video.name,
                'title': video.stem, 'series': video.parent.name, 'model': model_name,
                'translator': translator_id, 'durationMillis': round(float(metadata['format']['duration']) * 1000),
                'segments': segments}
@@ -152,6 +155,9 @@ def process(video, destination, model_name='large-v3', device='cuda', log=print)
     with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('study.json', payload)
         archive.writestr('study.sha256', hashlib.sha256(payload).hexdigest())
+    if target.exists():
+        import shutil, time
+        shutil.copy2(target, target.with_name(target.name + f'.backup-{time.time_ns()}'))
     temporary.replace(target)
     log(f'Preparado: {target}')
     return target

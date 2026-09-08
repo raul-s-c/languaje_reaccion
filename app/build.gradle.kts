@@ -12,8 +12,8 @@ android {
         applicationId = "com.raulsc.lenguareaccion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.3.3"
+        versionCode = 10
+        versionName = "0.3.4"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

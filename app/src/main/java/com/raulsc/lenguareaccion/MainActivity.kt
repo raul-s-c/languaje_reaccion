@@ -130,9 +130,12 @@ private fun ReactorHome() {
         if (normalOrientation != null) activity?.requestedOrientation = normalOrientation
     } }
     val transcriptionController = remember { LocalTranscriptionController(context) }
-    val transcriptionState = transcriptionController.state
+    LaunchedEffect(videoUri) { transcriptionController.selectVideo(videoUri) }
+    val transcriptionState = if (transcriptionController.currentVideo == videoUri) transcriptionController.state else TranscriptionState.Idle
+    var packageVideo by remember { mutableStateOf<Uri?>(null) }
     val packagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && videoUri != null) transcriptionController.importPackage(uri, videoUri!!)
+        if (uri != null) packageVideo?.let { transcriptionController.importPackage(uri, it) }
+        packageVideo = null
     }
     var previousCrash by remember { mutableStateOf(CrashReporter.read(context)) }
     DisposableEffect(transcriptionController) { onDispose { transcriptionController.close() } }
@@ -144,6 +147,7 @@ private fun ReactorHome() {
                 Intent.FLAG_GRANT_READ_URI_PERMISSION,
             )
         }
+        transcriptionController.selectVideo(uri)
         videoUri = uri
         preferences.edit().putString("uri", uri.toString()).apply()
     }
@@ -151,6 +155,7 @@ private fun ReactorHome() {
         VideoUrlDialog(
             dismiss = { showVideoUrlDialog = false },
             open = { uri ->
+                transcriptionController.selectVideo(uri)
                 videoUri = uri
                 // Plex tokens often travel in the query string; do not persist them in plain text.
                 preferences.edit().remove("uri").apply()
@@ -164,6 +169,12 @@ private fun ReactorHome() {
     var avOffset by remember(syncKey) { mutableLongStateOf(settings.getLong("audio_$syncKey", 0L)) }
     var savedSub by remember(syncKey) { mutableLongStateOf(subtitleOffset) }
     var savedAudio by remember(syncKey) { mutableLongStateOf(avOffset) }
+    LaunchedEffect(transcriptionController.importRevision) {
+        if (transcriptionController.importRevision > 0 && transcriptionController.currentVideo == videoUri) {
+            subtitleOffset = 0L
+            savedSub = 0L
+        }
+    }
     var saveMessage by remember(syncKey) { mutableStateOf<String?>(null) }
     var saving by remember(syncKey) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -195,7 +206,7 @@ private fun ReactorHome() {
     ) {
         if (!fullscreen) {
         AppHeader()
-        TextButton(enabled = videoUri != null, onClick = { packagePicker.launch(arrayOf("*/*")) }) {
+        TextButton(enabled = videoUri != null, onClick = { packageVideo = videoUri; packagePicker.launch(arrayOf("*/*")) }) {
             Text("Importar paquete PC para el vídeo abierto (.lrpack)")
         }
         previousCrash?.let { crash ->
@@ -222,6 +233,16 @@ private fun ReactorHome() {
                 Row {
                     TextButton(onClick = { showStudy = false }) { Text("Subtítulos") }
                     TextButton(onClick = { showStudy = true }) { Text("Estudio / procesamiento") }
+                }
+                when (val status = transcriptionState) {
+                    is TranscriptionState.Importing -> {
+                        Text("Comprobando que el paquete pertenece al vídeo… ${if (status.percent >= 0) "${status.percent}%" else ""}")
+                        Text("Se lee el archivo completo. Si está en OneDrive, puede tardar.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    is TranscriptionState.Failed -> Text(status.message, color = MaterialTheme.colorScheme.error)
+                    is TranscriptionState.Completed -> if (status.source.isNotBlank()) Text(status.source,
+                        style = MaterialTheme.typography.bodySmall, maxLines = 3)
+                    else -> Unit
                 }
                 if (showStudy) StudyPane(videoUri, transcriptionController, Modifier.weight(1f))
                 else SubtitleTimeline(segments, playbackPosition, subtitleOffset,
@@ -294,6 +315,21 @@ private fun PlayerPane(
     onPositionChanged: (Long) -> Unit, seekRequest: Pair<Long, Long>?,
 ) {
     var syncDialog by remember { mutableStateOf(false) }
+    val playerContext = LocalContext.current
+    val videoName by produceState("", videoUri) {
+        value = withContext(Dispatchers.IO) {
+            when (videoUri?.scheme) {
+                "content" -> runCatching {
+                    playerContext.contentResolver.query(videoUri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                        if (it.moveToFirst()) it.getString(0) else "Vídeo seleccionado"
+                    } ?: "Vídeo seleccionado"
+                }.getOrDefault("Vídeo seleccionado")
+                "file" -> java.io.File(videoUri.path.orEmpty()).name
+                null -> "Elige un vídeo japonés para comenzar"
+                else -> "Vídeo por URL"
+            }
+        }
+    }
     val shortWindow = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() < 650.dp || LocalWindowInfo.current.containerSize.width.toDp() < 840.dp }
     if (syncDialog) SyncDialog(subtitleOffset, avOffset, onSubtitleOffset, onAvOffset,
         saveSync, saveMessage, dismiss = { syncDialog = false })
@@ -317,8 +353,9 @@ private fun PlayerPane(
                 if (!shortWindow) Column(modifier = Modifier.weight(1f)) {
                     Text("Reproductor de estudio", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        if (videoUri == null) "Elige un vídeo japonés para comenzar"
-                        else "Vídeo local preparado",
+                        videoName,
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                     )
                 }
@@ -539,7 +576,7 @@ private fun StudyPane(
     var hasApiKey by remember { mutableStateOf(controller.hasOpenAiKey()) }
     val busy = state is TranscriptionState.DownloadingModel ||
         state is TranscriptionState.ExtractingAudio || state is TranscriptionState.Transcribing ||
-        state is TranscriptionState.Enriching
+        state is TranscriptionState.Enriching || state is TranscriptionState.Importing
 
     if (showApiKeyDialog) {
         ApiKeyDialog(
@@ -667,6 +704,7 @@ private fun TranscriptionStatus(state: TranscriptionState, clearFailure: () -> U
             "Descargando modelo ${state.model.label}",
             state.percent,
         )
+        is TranscriptionState.Importing -> Text("Verificando el vídeo antes de importar…")
         is TranscriptionState.ExtractingAudio -> ProgressStatus("Extrayendo audio", state.percent)
         is TranscriptionState.Transcribing -> ProgressStatus("Reconociendo japonés", state.percent)
         is TranscriptionState.Enriching -> ProgressStatus("Corrigiendo y traduciendo", state.percent)

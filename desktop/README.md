@@ -27,7 +27,8 @@ Whisper y NLLB usan CTranslate2 y GPU si se elige cuda, cargados por etapas.
 
 En Android: abrir el vídeo, pulsar «Importar paquete PC» y elegir el lrpack
 desde el selector de archivos, incluyendo OneDrive si su proveedor está disponible.
-La asociación con el vídeo es manual. Comprobar que ambos nombres correspondan.
+Android comprueba la huella SHA-256 del vídeo antes de importar el paquete; un
+paquete de otro archivo se rechaza. Las transcripciones se guardan por vídeo.
 
 Se guardan puntos de recuperación al terminar la transcripción y después de cada
 traducción. Una transcripción interrumpida se reinicia. Cerrar la ventana interrumpe
@@ -40,4 +41,9 @@ fichas con IPADIC. Traducción automática local pendiente de evaluar con anime.
 
 Formato: ZIP con `study.json` (formatVersion 1) y `study.sha256`.
 El hash comprueba integridad, no autentica la procedencia.
-Los subtítulos embebidos en el vídeo no se utilizan.
+Si el vídeo incluye pistas de texto japonesas y españolas, se usan sus textos y
+tiempos originales (se prefiere español europeo y se excluyen pistas forzadas o
+de doblaje). El español se asocia al japonés por solapamiento temporal; no siempre
+hay equivalencia frase a frase. Si no hay ambas pistas, se usa Whisper y traducción
+local. Las frases reconocidas se dividen usando tiempos por palabra para no cubrir
+silencios largos. Los paquetes antiguos que se sustituyan se conservan en `.backup-*`.
